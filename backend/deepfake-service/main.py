@@ -154,17 +154,17 @@ def process_image(pil_image: Image.Image, model_type: str = "swin"):
     }
 
 def format_frontend_response(result: dict, original_model_type: str):
-    confidence_pct = round(result["confidence"] * 100)
+    confidence_pct = round(result["confidence"] * 100, 2)
     prediction = result["prediction"]
     
     if prediction == "Real" or prediction == "No Face Detected":
         authenticity = "REAL"
         real_prob = confidence_pct
-        fake_prob = 100 - real_prob
+        fake_prob = round(100.00 - real_prob, 2)
     else:
         authenticity = "AI GENERATED"
         fake_prob = confidence_pct
-        real_prob = 100 - fake_prob
+        real_prob = round(100.00 - fake_prob, 2)
 
     # Bounding risks
     if real_prob > 80:

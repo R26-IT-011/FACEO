@@ -118,26 +118,23 @@ export default function DeepfakePage() {
                     key={m.id}
                     type="button"
                     onClick={() => setSelectedModel(m.id)}
-                    className={`w-full text-left p-3.5 rounded-xl border transition-all flex items-start justify-between group ${
-                      isSelected
+                    className={`w-full text-left p-3.5 rounded-xl border transition-all flex items-start justify-between group ${isSelected
                         ? "bg-white/10 border-white/40 text-white shadow-[0_0_20px_rgba(255,255,255,0.1)]"
                         : "bg-white/5 border-white/5 text-white/50 hover:bg-white/10 hover:border-white/20 hover:text-white/80"
-                    }`}
+                      }`}
                   >
                     <div className="flex-1 pr-2">
                       <div className="text-xs font-medium tracking-wide flex items-center gap-2">
                         <span className={isSelected ? "text-white font-semibold" : "text-white/80"}>{m.name}</span>
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${
-                          isSelected ? "bg-white text-black font-bold" : "bg-white/10 text-white/50"
-                        }`}>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${isSelected ? "bg-white text-black font-bold" : "bg-white/10 text-white/50"
+                          }`}>
                           {m.badge}
                         </span>
                       </div>
                       <p className="text-[10px] text-white/40 font-light mt-1 leading-snug">{m.desc}</p>
                     </div>
-                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center mt-0.5 shrink-0 transition-colors ${
-                      isSelected ? "border-white bg-white" : "border-white/20 group-hover:border-white/40"
-                    }`}>
+                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center mt-0.5 shrink-0 transition-colors ${isSelected ? "border-white bg-white" : "border-white/20 group-hover:border-white/40"
+                      }`}>
                       {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
                     </div>
                   </button>
@@ -156,10 +153,6 @@ export default function DeepfakePage() {
               <div className="flex items-center justify-between">
                 <span className="text-xs text-white/50">Stack</span>
                 <span className="text-[10px] bg-white/5 px-2 py-1 rounded text-white/60">FastAPI / PyTorch</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-white/50">Datasets</span>
-                <span className="text-[10px] bg-white/5 px-2 py-1 rounded text-white/60">FaceForensics++</span>
               </div>
             </div>
           </div>

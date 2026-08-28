@@ -119,15 +119,18 @@ export default function DeepfakeResultsPage() {
             <ShieldCheck className="w-4 h-4" /> Media Authenticity
           </h3>
           {results.selectedModel && (
-            <select 
-              value={results.selectedModelId || "swin_base"}
-              onChange={(e) => handleReAnalyze(e.target.value)}
-              className="text-[10px] font-mono tracking-widest uppercase bg-white/10 border border-white/15 px-3 py-1 rounded-full text-white/90 font-medium appearance-none outline-none cursor-pointer hover:bg-white/20 transition-colors"
-            >
-               <option value="swin_base" className="bg-slate-900">SwinBase Model</option>
-               <option value="cnn" className="bg-slate-900">CNN Model</option>
-               <option value="vit" className="bg-slate-900">ViT Model</option>
-            </select>
+            <div className="relative p-[2px] rounded-full overflow-hidden flex items-center justify-center shadow-[0_0_10px_rgba(59,130,246,0.2)]">
+              <div className="absolute left-1/2 top-1/2 w-[250px] h-[250px] -translate-x-1/2 -translate-y-1/2 animate-[spin_3s_linear_infinite] bg-[conic-gradient(from_0deg_at_50%_50%,transparent_0deg,transparent_180deg,#3b82f6_360deg)]" />
+              <select 
+                value={results.selectedModelId || "swin_base"}
+                onChange={(e) => handleReAnalyze(e.target.value)}
+                className="relative z-10 text-xs font-mono tracking-widest uppercase bg-[#0b0f19] px-4 py-1.5 rounded-full text-white/90 font-medium appearance-none cursor-pointer outline-none w-full"
+              >
+                 <option value="swin_base" className="bg-slate-900">SwinBase Model</option>
+                 <option value="cnn" className="bg-slate-900">CNN Model</option>
+                 <option value="vit" className="bg-slate-900">ViT Model</option>
+              </select>
+            </div>
           )}
         </div>
         <div className="flex items-end gap-6 border-b border-white/5 pb-8 mb-6 relative z-10">
@@ -139,11 +142,16 @@ export default function DeepfakeResultsPage() {
             <p className="text-2xl font-light">{results.confidence}%</p>
           </div>
         </div>
-        <p className="text-white/50 text-sm leading-relaxed max-w-lg font-light relative z-10">
-          {results.reason ? results.reason : isReal
-            ? `The ${results.selectedModel || "neural network"} analyzed the facial structures and determined the subject is authentic. No synthetic GAN artifacts or deepfake distortions were detected.`
-            : `The ${results.selectedModel || "neural network"} detected synthetic artifacts consistent with AI-generated or deepfake imagery. Further manual verification is recommended.`}
-        </p>
+        <div className="relative z-10">
+          <p className="text-white/50 text-sm leading-relaxed max-w-lg font-light">
+            {results.reason ? results.reason : isReal
+              ? `The ${results.selectedModel || "neural network"} analyzed the facial structures and determined the subject is authentic. No synthetic GAN artifacts or deepfake distortions were detected.`
+              : `The ${results.selectedModel || "neural network"} detected synthetic artifacts consistent with AI-generated or deepfake imagery. Further manual verification is recommended.`}
+          </p>
+          <p className="text-xs text-white/50 font-mono tracking-widest uppercase mt-5 border-t border-white/10 pt-4 inline-block">
+            * Click the glowing badge to change AI model
+          </p>
+        </div>
       </motion.div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
