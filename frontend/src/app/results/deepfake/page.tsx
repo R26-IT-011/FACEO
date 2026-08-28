@@ -5,6 +5,9 @@ import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertCircle, ShieldCheck } from "lucide-react";
+import { analyzeImage } from "@/shared/services/ApiClient";
+import AnalysisLoader from "@/shared/components/AnalysisLoader";
+import { AnimatePresence } from "framer-motion";
 
 interface DeepfakeResult {
   authenticity: string;
@@ -13,16 +16,49 @@ interface DeepfakeResult {
   confidence: number;
   riskLevel: string;
   selectedModel?: string;
+  selectedModelId?: string;
   frameSummary?: number[];
   sessionType: string;
   duration?: number;
   uploadedImage?: string;
+  originalImage?: string;
   reason?: string;
 }
 
 export default function DeepfakeResultsPage() {
   const [results, setResults] = useState<DeepfakeResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [reAnalyzing, setReAnalyzing] = useState(false);
+  const [reAnalyzeModelName, setReAnalyzeModelName] = useState("");
+
+  const handleReAnalyze = async (modelId: string) => {
+    if (!results || !results.originalImage) return;
+    const modelName = modelId === "swin_base" ? "SwinBase Model" : modelId === "cnn" ? "CNN Model" : "ViT Model";
+    setReAnalyzeModelName(modelName);
+    setReAnalyzing(true);
+    try {
+      const res = await fetch(results.originalImage);
+      const blob = await res.blob();
+      const file = new File([blob], "image.jpg", { type: "image/jpeg" });
+      
+      const newResult = await analyzeImage("deepfake", file, modelId);
+      if (newResult.status === "success") {
+        const updated = {
+          ...newResult.data,
+          selectedModelId: modelId,
+          selectedModel: modelName,
+          uploadedImage: newResult.data.resultImage || results.originalImage,
+          originalImage: results.originalImage
+        };
+        sessionStorage.setItem("faceo_deepfake_results", JSON.stringify(updated));
+        setResults(updated);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setReAnalyzing(false);
+    }
+  };
 
   useEffect(() => {
     const stored = sessionStorage.getItem("faceo_deepfake_results");
@@ -74,6 +110,7 @@ export default function DeepfakeResultsPage() {
 
   return (
     <ResultLayout title="Deepfake Results" sessionId="FCO-DFK-2026" backHref="/deepfake" backLabel="New Analysis">
+      <AnimatePresence>{reAnalyzing && <AnalysisLoader message={`Re-analyzing with ${reAnalyzeModelName}`} />}</AnimatePresence>
       {/* Authenticity Hero */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-8 mb-6 relative overflow-hidden">
         <div className={`absolute top-0 right-0 w-64 h-64 blur-[100px] rounded-full pointer-events-none ${isReal ? "bg-green-500/10" : "bg-red-500/10"}`} />
@@ -82,9 +119,15 @@ export default function DeepfakeResultsPage() {
             <ShieldCheck className="w-4 h-4" /> Media Authenticity
           </h3>
           {results.selectedModel && (
-            <span className="text-[10px] font-mono tracking-widest uppercase bg-white/10 border border-white/15 px-3 py-1 rounded-full text-white/90 font-medium">
-              Model: {results.selectedModel}
-            </span>
+            <select 
+              value={results.selectedModelId || "swin_base"}
+              onChange={(e) => handleReAnalyze(e.target.value)}
+              className="text-[10px] font-mono tracking-widest uppercase bg-white/10 border border-white/15 px-3 py-1 rounded-full text-white/90 font-medium appearance-none outline-none cursor-pointer hover:bg-white/20 transition-colors"
+            >
+               <option value="swin_base" className="bg-slate-900">SwinBase Model</option>
+               <option value="cnn" className="bg-slate-900">CNN Model</option>
+               <option value="vit" className="bg-slate-900">ViT Model</option>
+            </select>
           )}
         </div>
         <div className="flex items-end gap-6 border-b border-white/5 pb-8 mb-6 relative z-10">

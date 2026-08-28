@@ -13,6 +13,7 @@ import { getBase64Resized } from "@/utils/imageUtils";
 const DEEPFAKE_MODELS = [
   { id: "swin_base", name: "SwinBase Model", desc: "Hierarchical Vision Transformer with Shifted Windows", badge: "Transformer" },
   { id: "cnn", name: "CNN Model", desc: "Convolutional Neural Network Deepfake Artifact Classifier", badge: "High Speed" },
+  { id: "vit", name: "ViT Model", desc: "Vision Transformer", badge: "Transformer" },
 ];
 
 export default function DeepfakePage() {
@@ -52,12 +53,14 @@ export default function DeepfakePage() {
       }
 
       const uploadedImage = await getBase64Resized(file);
-      const result = await analyzeImage("deepfake", file);
+      const result = await analyzeImage("deepfake", file, activeModelObj.id);
       if (result.status === "success") {
         sessionStorage.setItem("faceo_deepfake_results", JSON.stringify({
           ...result.data,
+          selectedModelId: activeModelObj.id,
           selectedModel: activeModelObj.name,
-          uploadedImage
+          uploadedImage: result.data.resultImage || uploadedImage,
+          originalImage: uploadedImage
         }));
         router.push("/results/deepfake");
       } else {
