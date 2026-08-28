@@ -47,12 +47,12 @@ See [`architecture.md`](./architecture.md) for the full system diagram and data-
 ```
 human-authenticity-analyzer/
 ├── backend/
-│   ├── api/                        # Main API gateway (port 8000) — skin analysis
-│   ├── age-gender-service/         # Age & Gender microservice   (port 8001)
-│   ├── emotion-service/            # Emotion microservice        (port 8002)
-│   ├── bruise-detection-service/   # Bruise/Marks microservice   (port 8003)
-│   ├── deepfake-service/           # Deepfake microservice       (port 8004)
-│   └── venv/                       # Python virtual environment  (not committed)
+│   ├── api/                              # Main API gateway (port 8000) — skin analysis
+│   ├── age-gender-service/               # Age & Gender microservice   (port 8001)
+│   ├── emotion-service/                  # Emotion microservice        (port 8002)
+│   ├── face-condition-detection-service/ # Face Condition microservice (port 8003)
+│   ├── deepfake-service/                 # Deepfake microservice       (port 8004)
+│   └── venv/                             # Python virtual environment  (not committed)
 ├── frontend/
 │   ├── src/                        # Next.js App Router source
 │   ├── public/models/              # face-api.js TF.js model weights
@@ -101,7 +101,7 @@ Install dependencies for all backend services:
 ```powershell
 pip install -r age-gender-service/requirements.txt
 pip install -r emotion-service/requirements.txt
-pip install -r bruise-detection-service/requirements.txt
+pip install -r face-condition-detection-service/requirements.txt
 pip install -r deepfake-service/requirements.txt
 ```
 
@@ -150,10 +150,10 @@ cd <PROJECT_ROOT>\backend; .\venv\Scripts\Activate.ps1; python emotion-service/m
 
 ---
 
-### Terminal 4 — Bruise & Marks Service · Port `8003`
+### Terminal 4 — Face Condition Service · Port `8003`
 
 ```powershell
-cd <PROJECT_ROOT>\backend; .\venv\Scripts\Activate.ps1; python bruise-detection-service/main.py
+cd <PROJECT_ROOT>\backend; .\venv\Scripts\Activate.ps1; python face-condition-detection-service/main.py
 ```
 
 ---
