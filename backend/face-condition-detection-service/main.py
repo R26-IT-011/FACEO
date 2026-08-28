@@ -23,7 +23,7 @@ def resolve_model_path(candidates: list[str]) -> str:
     return os.path.join(base_dir, candidates[0])
 
 
-# relative paths භාවිතයෙන් YOLO Models 2ම Load කරගැනීම (best_model1.pt / best1.pt & best_model2.pt / best2.pt)
+# Load the both model usin relative path
 MODEL1_PATH = resolve_model_path(["best_model1.pt", "best1.pt", "model1.pt"])
 MODEL2_PATH = resolve_model_path(["best_model2.pt", "best2.pt", "model2.pt"])
 
@@ -58,7 +58,7 @@ def get_marks(image_bytes: bytes, model_choice: str = "both"):
     results1, results2 = [], []
     choice_lower = (model_choice or "both").lower()
 
-    # Frontend එකෙන් එවන model_choice (yolov8, yolov11, model1, model2, both) අනුව prediction සිදුකිරීම
+    # predict using front end model request
     if choice_lower in ["yolov8", "model1", "both"]:
         if model1 is not None:
             results1 = model1.predict(source=img, conf=0.25, verbose=False)
@@ -85,7 +85,7 @@ def get_marks(image_bytes: bytes, model_choice: str = "both"):
 
     marks_detail = []
 
-    # Model 1 detections එකතු කිරීම
+    # Model 1 detections 
     for r in results1:
         for box in r.boxes:
             coords = box.xywhn[0].tolist()
@@ -99,7 +99,7 @@ def get_marks(image_bytes: bytes, model_choice: str = "both"):
                 "source_model": "YOLOv8",
             })
 
-    # Model 2 detections එකතු කිරීම
+    # Model 2 detections 
     for r in results2:
         for box in r.boxes:
             coords = box.xywhn[0].tolist()
@@ -134,7 +134,7 @@ def compare_criminal():
         if "evidence" not in request.files or "suspects" not in request.files:
             return jsonify({"status": "error", "error": "Please upload case evidence and suspect images"}), 400
 
-        # React Frontend එකෙන් එවන selected model එක (Default = 'both')
+        # React Frontend both model
         model_choice = request.form.get("model_choice", "both")
 
         e_bytes = request.files["evidence"].read()
@@ -149,7 +149,7 @@ def compare_criminal():
 
             total_score = 0.0
 
-            # Evidence & Suspect marks සැසඳීම
+            # Evidence & Suspect marks 
             for em in e_marks:
                 best_match_for_this_mark = 0.0
                 for sm in s_marks:
@@ -169,7 +169,7 @@ def compare_criminal():
 
                 total_score += best_match_for_this_mark
 
-            # Average match percentage ගණනය කිරීම
+            # Average match percentage 
             match_percent = (
                 (total_score / len(e_marks) * 100.0) if len(e_marks) > 0 else 0.0
             )
