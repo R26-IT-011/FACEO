@@ -12,7 +12,8 @@ import { getBase64Resized } from "@/utils/imageUtils";
 
 const DEEPFAKE_MODELS = [
   { id: "swin_base", name: "SwinBase Model", desc: "Hierarchical Vision Transformer with Shifted Windows", badge: "Transformer" },
-  { id: "cnn", name: "CNN Model", desc: "Convolutional Neural Network Deepfake Artifact Classifier", badge: "High Speed" },
+  { id: "cnn", name: "CNN Model (ResNet-50)", desc: "Convolutional Neural Network Deepfake Artifact Classifier", badge: "High Speed" },
+  { id: "vit", name: "ViT Model", desc: "Vision Transformer", badge: "Transformer" },
 ];
 
 export default function DeepfakePage() {
@@ -52,12 +53,14 @@ export default function DeepfakePage() {
       }
 
       const uploadedImage = await getBase64Resized(file);
-      const result = await analyzeImage("deepfake", file);
+      const result = await analyzeImage("deepfake", file, activeModelObj.id);
       if (result.status === "success") {
         sessionStorage.setItem("faceo_deepfake_results", JSON.stringify({
           ...result.data,
+          selectedModelId: activeModelObj.id,
           selectedModel: activeModelObj.name,
-          uploadedImage
+          uploadedImage: result.data.resultImage || uploadedImage,
+          originalImage: uploadedImage
         }));
         router.push("/results/deepfake");
       } else {
@@ -88,7 +91,19 @@ export default function DeepfakePage() {
         {/* Main Area */}
         <div className="flex-1 flex flex-col">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
-            <h1 className="text-3xl md:text-4xl font-light tracking-tight mb-2">Deepfake Detection</h1>
+            <h1 className="text-3xl md:text-4xl font-light tracking-tight mb-2 flex">
+              {"Deepfake Detection".split("").map((char, index) => (
+                <motion.span
+                  key={index}
+                  whileHover={{ scale: 1.3, y: -4 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 12 }}
+                  className="inline-block cursor-default"
+                  style={{ width: char === " " ? "0.4em" : "auto", color: "white" }}
+                >
+                  {char}
+                </motion.span>
+              ))}
+            </h1>
             <p className="text-white/40 text-sm font-light">
               Multi-spectral authenticity verification — Real vs AI-generated classification from uploaded images
             </p>
@@ -115,26 +130,23 @@ export default function DeepfakePage() {
                     key={m.id}
                     type="button"
                     onClick={() => setSelectedModel(m.id)}
-                    className={`w-full text-left p-3.5 rounded-xl border transition-all flex items-start justify-between group ${
-                      isSelected
-                        ? "bg-white/10 border-white/40 text-white shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-                        : "bg-white/5 border-white/5 text-white/50 hover:bg-white/10 hover:border-white/20 hover:text-white/80"
-                    }`}
+                    className={`w-full text-left p-3.5 rounded-xl border transition-all flex items-start justify-between group ${isSelected
+                      ? "bg-white/10 border-white/40 text-white shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                      : "bg-white/5 border-white/5 text-white/50 hover:bg-white/10 hover:border-white/20 hover:text-white/80"
+                      }`}
                   >
                     <div className="flex-1 pr-2">
                       <div className="text-xs font-medium tracking-wide flex items-center gap-2">
                         <span className={isSelected ? "text-white font-semibold" : "text-white/80"}>{m.name}</span>
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${
-                          isSelected ? "bg-white text-black font-bold" : "bg-white/10 text-white/50"
-                        }`}>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${isSelected ? "bg-white text-black font-bold" : "bg-white/10 text-white/50"
+                          }`}>
                           {m.badge}
                         </span>
                       </div>
                       <p className="text-[10px] text-white/40 font-light mt-1 leading-snug">{m.desc}</p>
                     </div>
-                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center mt-0.5 shrink-0 transition-colors ${
-                      isSelected ? "border-white bg-white" : "border-white/20 group-hover:border-white/40"
-                    }`}>
+                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center mt-0.5 shrink-0 transition-colors ${isSelected ? "border-white bg-white" : "border-white/20 group-hover:border-white/40"
+                      }`}>
                       {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
                     </div>
                   </button>
@@ -153,10 +165,6 @@ export default function DeepfakePage() {
               <div className="flex items-center justify-between">
                 <span className="text-xs text-white/50">Stack</span>
                 <span className="text-[10px] bg-white/5 px-2 py-1 rounded text-white/60">FastAPI / PyTorch</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-white/50">Datasets</span>
-                <span className="text-[10px] bg-white/5 px-2 py-1 rounded text-white/60">FaceForensics++</span>
               </div>
             </div>
           </div>
