@@ -4,7 +4,7 @@ import ResultLayout from "@/shared/components/ResultLayout";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, Cpu, CheckCircle } from "lucide-react";
+import { AlertCircle, Cpu, Info } from "lucide-react";
 
 interface AgeGenderResult {
   age: number;
@@ -125,6 +125,24 @@ export default function AgeGenderResultsPage() {
           <span className="text-[10px] font-mono uppercase bg-white/10 text-white/80 px-2.5 py-1 rounded-full border border-white/15">
             Calibrated Neural Inference
           </span>
+        </motion.div>
+      )}
+
+      {/* Occlusion / Accuracy Notice — shown when confidence is low */}
+      {results.genderConfidence < 82 && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          className="mb-6 flex items-start gap-3 px-4 py-3.5 rounded-xl border border-amber-500/20 bg-amber-500/5"
+        >
+          <Info className="w-4 h-4 text-amber-400/80 mt-0.5 shrink-0" />
+          <p className="text-xs text-amber-300/70 font-light leading-relaxed">
+            <span className="font-medium text-amber-300/90">Prediction accuracy may be affected.</span>{" "}
+            Facial accessories such as sunglasses, masks, hats, or heavy makeup can partially
+            obscure key facial features used for demographic estimation. For the most accurate
+            results, please use a clear, unobstructed face photo with good lighting.
+          </p>
         </motion.div>
       )}
 

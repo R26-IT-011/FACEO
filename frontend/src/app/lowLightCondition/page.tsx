@@ -12,8 +12,6 @@ import { getBase64Resized } from "@/utils/imageUtils";
 import Link from "next/link";
 import { ArrowLeft, Moon, Sun, Zap } from "lucide-react";
 
-const EMOTIONS = ["angry", "happy", "sad", "neutral", "fear"];
-
 const LOW_LIGHT_MODELS = [
   { id: "zero_dce", name: "Zero-DCE + CNN", desc: "Zero-Reference Deep Curve Estimation with Emotion Classifier", badge: "Optimal Dim Light", icon: Moon },
   { id: "gamma_norm", name: "Gamma Normalizer", desc: "Adaptive Contrast Enhancement & Illuminance Equalization", badge: "Fast Enhancer", icon: Sun },
@@ -90,7 +88,6 @@ export default function LowLightConditionPage() {
         )}
       </AnimatePresence>
 
-      {/* Decorative ambient lighting */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-amber-500/5 blur-[120px] rounded-full pointer-events-none" />
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-500/5 blur-[120px] rounded-full pointer-events-none" />
 

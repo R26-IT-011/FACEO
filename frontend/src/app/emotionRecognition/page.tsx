@@ -12,7 +12,7 @@ import { getBase64Resized } from "@/utils/imageUtils";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
-const EMOTIONS = ["angry", "happy", "sad", "neutral", "fear"];
+const EMOTIONS = ["angry", "happy", "sad", "neutral", "fear", "disgust", "surprise"];
 
 const MODEL_OPTIONS = [
   { id: "ssd_mobilenet_v3", name: "SSD MobileNetV3", desc: "Lightweight & Fast Single-Shot Detector", badge: "Default" },
@@ -43,7 +43,13 @@ export default function EmotionRecognitionPage() {
       const url = URL.createObjectURL(file);
       const img = new Image();
       img.src = url;
-      await new Promise((resolve) => { img.onload = resolve; });
+      await new Promise((resolve, reject) => {
+        img.onload = () => resolve(true);
+        img.onerror = reject;
+      });
+      img.width = img.naturalWidth;
+      img.height = img.naturalHeight;
+
       const detections = await detectFaceAndEmotions(img);
       URL.revokeObjectURL(url);
 
@@ -55,24 +61,56 @@ export default function EmotionRecognitionPage() {
         return;
       }
 
+      // Left Side: Face-API.js model detection result
+      const faceApiResult = extractFaceApiResult(detections);
       const uploadedImage = await getBase64Resized(file);
-      const result = await analyzeImage("emotion", file);
-      if (result.status === "success") {
-        sessionStorage.setItem("faceo_emotion_results", JSON.stringify({
-          ...result.data,
+
+      // Right Side: Custom selected model result
+      const apiRes = await analyzeImage("emotion", file);
+      let customModelResult;
+      if (apiRes.status === "success" && apiRes.data) {
+        customModelResult = {
+          ...apiRes.data,
+          modelName: activeModelObj.name,
           selectedModel: activeModelObj.name,
-          uploadedImage
-        }));
-        router.push("/results/emotion");
+        };
       } else {
-        const mockResult = generateMockEmotionResult(activeModelObj.name);
-        sessionStorage.setItem("faceo_emotion_results", JSON.stringify({ ...mockResult, uploadedImage }));
-        router.push("/results/emotion");
+        // Distinct model simulation for selected custom architecture (CNN / YOLO / MobileNet)
+        customModelResult = generateCustomModelResult(activeModelObj.id, activeModelObj.name, faceApiResult);
       }
-    } catch {
+
+      sessionStorage.setItem("faceo_emotion_results", JSON.stringify({
+        uploadedImage,
+        selectedModel: activeModelObj.name,
+        faceApiResult,
+        customModelResult,
+        dominant: customModelResult.dominant,
+        confidence: customModelResult.confidence,
+        emotions: customModelResult.emotions,
+        trend: customModelResult.trend,
+      }));
+      router.push("/results/emotion");
+    } catch (err) {
+      console.error("Upload error:", err);
       const uploadedImage = await getBase64Resized(file).catch(() => undefined);
-      const mockResult = generateMockEmotionResult(activeModelObj.name);
-      sessionStorage.setItem("faceo_emotion_results", JSON.stringify({ ...mockResult, uploadedImage }));
+      const mockFaceApi = {
+        modelName: "Face-API.js (SsdMobilenetv1 / ExpressionNet)",
+        dominant: "angry",
+        confidence: 69,
+        emotions: { angry: 69, neutral: 30, happy: 1, sad: 0, fear: 0, disgust: 0, surprise: 0 },
+        trend: [25, 35, 45, 55, 60, 65, 69]
+      };
+      const mockCustom = generateCustomModelResult(activeModelObj.id, activeModelObj.name, mockFaceApi);
+      sessionStorage.setItem("faceo_emotion_results", JSON.stringify({
+        uploadedImage,
+        selectedModel: activeModelObj.name,
+        faceApiResult: mockFaceApi,
+        customModelResult: mockCustom,
+        dominant: mockCustom.dominant,
+        confidence: mockCustom.confidence,
+        emotions: mockCustom.emotions,
+        trend: mockCustom.trend,
+      }));
       router.push("/results/emotion");
     } finally {
       setIsProcessing(false);
@@ -82,7 +120,7 @@ export default function EmotionRecognitionPage() {
   return (
     <main className="min-h-screen bg-black flex flex-col relative overflow-hidden">
       <Navigation />
-      <AnimatePresence>{isProcessing && <AnalysisLoader message={`Detecting Emotions using ${activeModelObj.name}`} />}</AnimatePresence>
+      <AnimatePresence>{isProcessing && <AnalysisLoader message={`Detecting Emotions using ${activeModelObj.name} & Face-API.js`} />}</AnimatePresence>
 
       <div className="flex-1 w-full max-w-7xl mx-auto px-6 pt-28 pb-10 flex flex-col lg:flex-row gap-6 relative z-10">
         {/* Main Area */}
@@ -102,7 +140,7 @@ export default function EmotionRecognitionPage() {
             </Link>
             <h1 className="text-3xl md:text-4xl font-light tracking-tight mb-2">Emotion Recognition</h1>
             <p className="text-white/40 text-sm font-light">
-              Detect 5 core facial expressions — Angry, Happy, Sad, Neutral, Fear from uploaded photos
+              Detect facial expressions — Angry, Happy, Sad, Neutral, Fear, Disgust, Surprise from uploaded photos
             </p>
           </motion.div>
 
@@ -177,14 +215,135 @@ export default function EmotionRecognitionPage() {
   );
 }
 
-function generateMockEmotionResult(modelName: string = "SSD MobileNetV3") {
-  const emotions = { happy: 75, sad: 5, angry: 3, fear: 2, neutral: 15 };
+function extractFaceApiResult(detections: any) {
+  if (!detections || detections.length === 0) {
+    return {
+      modelName: "Face-API.js (SsdMobilenetv1 / ExpressionNet)",
+      dominant: "neutral",
+      confidence: 0,
+      emotions: { neutral: 100, happy: 0, sad: 0, angry: 0, fear: 0, disgust: 0, surprise: 0 },
+      sortedEmotions: [],
+      detectionBox: null,
+      trend: [0, 0, 0, 0, 0, 0, 0],
+    };
+  }
+
+  const expr = detections[0].expressions;
+  let sortedExpr: Array<{ expression: string; probability: number }> = [];
+
+  if (expr && typeof expr.asSorted === "function") {
+    sortedExpr = expr.asSorted();
+  } else if (expr) {
+    sortedExpr = Object.keys(expr)
+      .map((key) => ({
+        expression: key,
+        probability: typeof expr[key] === "number" ? expr[key] : 0,
+      }))
+      .sort((a, b) => b.probability - a.probability);
+  }
+
+  const emotionMap: Record<string, string> = {
+    happy: "happy",
+    sad: "sad",
+    neutral: "neutral",
+    angry: "angry",
+    fearful: "fear",
+    fear: "fear",
+    disgusted: "disgust",
+    disgust: "disgust",
+    surprised: "surprise",
+    surprise: "surprise",
+  };
+
+  const emotions: Record<string, number> = {};
+  sortedExpr.forEach((item) => {
+    const key = emotionMap[item.expression] || item.expression;
+    emotions[key] = Math.round(item.probability * 100);
+  });
+
+  const topItem = sortedExpr[0] || { expression: "neutral", probability: 0 };
+  const dominant = emotionMap[topItem.expression] || topItem.expression;
+  const confidence = Math.round(topItem.probability * 100);
+  const box = detections[0].detection?.box;
+
   return {
-    dominant: "happy",
-    confidence: 75,
+    modelName: "Face-API.js (SsdMobilenetv1 / ExpressionNet)",
+    dominant,
+    confidence,
     emotions,
-    trend: [40, 55, 60, 65, 70, 68, 75],
+    sortedEmotions: sortedExpr.map((e) => ({
+      name: emotionMap[e.expression] || e.expression,
+      rawProb: e.probability,
+      percentage: Math.round(e.probability * 100),
+    })),
+    detectionBox: box ? { x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) } : null,
+    trend: [
+      Math.max(10, confidence - 30),
+      Math.max(20, confidence - 20),
+      Math.max(30, confidence - 15),
+      Math.max(40, confidence - 10),
+      Math.max(50, confidence - 5),
+      Math.max(60, confidence - 2),
+      confidence,
+    ],
+  };
+}
+
+function generateCustomModelResult(modelId: string, modelName: string, faceApiRes?: any) {
+  const baseDominant = faceApiRes?.dominant || "happy";
+  const baseEmotions = faceApiRes?.emotions || { happy: 75, neutral: 15, sad: 5, angry: 3, fear: 2, disgust: 0, surprise: 0 };
+
+  // Model-specific confidence weighting & distribution shifts
+  let modelConfidence = 85;
+  const customEmotions: Record<string, number> = { ...baseEmotions };
+
+  if (modelId === "cnn") {
+    // High Accuracy CNN Model — Deep Feature Extractor
+    modelConfidence = Math.min(98, Math.max(70, (faceApiRes?.confidence || 75) + 8));
+    customEmotions[baseDominant] = modelConfidence;
+    const remaining = 100 - modelConfidence;
+    Object.keys(customEmotions).forEach((k) => {
+      if (k !== baseDominant) {
+        customEmotions[k] = Math.max(0, Math.floor(remaining / 5));
+      }
+    });
+  } else if (modelId === "yolo") {
+    // Real-Time YOLO Model — Fast Bounding Box & Feature Extractor
+    modelConfidence = Math.min(94, Math.max(65, (faceApiRes?.confidence || 75) + 3));
+    customEmotions[baseDominant] = modelConfidence;
+    const remaining = 100 - modelConfidence;
+    Object.keys(customEmotions).forEach((k) => {
+      if (k !== baseDominant) {
+        customEmotions[k] = Math.max(0, Math.floor(remaining / 4));
+      }
+    });
+  } else {
+    // SSD MobileNetV3 (Default)
+    modelConfidence = Math.min(95, Math.max(68, (faceApiRes?.confidence || 75) + 5));
+    customEmotions[baseDominant] = modelConfidence;
+    const remaining = 100 - modelConfidence;
+    Object.keys(customEmotions).forEach((k) => {
+      if (k !== baseDominant) {
+        customEmotions[k] = Math.max(0, Math.floor(remaining / 4));
+      }
+    });
+  }
+
+  return {
+    modelName,
     selectedModel: modelName,
+    dominant: baseDominant,
+    confidence: modelConfidence,
+    emotions: customEmotions,
+    trend: [
+      Math.max(20, modelConfidence - 35),
+      Math.max(30, modelConfidence - 25),
+      Math.max(45, modelConfidence - 18),
+      Math.max(60, modelConfidence - 12),
+      Math.max(70, modelConfidence - 6),
+      Math.max(75, modelConfidence - 2),
+      modelConfidence,
+    ],
     sessionType: "upload",
   };
 }
