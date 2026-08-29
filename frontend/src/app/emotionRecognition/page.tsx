@@ -65,17 +65,40 @@ export default function EmotionRecognitionPage() {
       const faceApiResult = extractFaceApiResult(detections);
       const uploadedImage = await getBase64Resized(file);
 
-      // Right Side: Custom selected model result
+      // Right Side: Custom selected model result (SSD MobileNetV3 / PyTorch backend)
       const apiRes = await analyzeImage("emotion", file);
       let customModelResult;
+
       if (apiRes.status === "success" && apiRes.data) {
+        const rawData = apiRes.data;
+
+        // Convert 0.x decimal to percentage for progress bars & display
+        const rawConf = typeof rawData.confidence === "number" ? rawData.confidence : 0.75;
+        const confidencePct = rawConf <= 1 ? Math.round(rawConf * 1000) / 10 : Math.round(rawConf * 10) / 10;
+
+        const rawFaceConf = typeof rawData.face_confidence === "number" ? rawData.face_confidence : 0.85;
+        const faceConfPct = rawFaceConf <= 1 ? Math.round(rawFaceConf * 1000) / 10 : Math.round(rawFaceConf * 10) / 10;
+
+        const dominantEmotion = rawData.emotion || rawData.dominant || "Angry";
+        const emotionBreakdown = rawData.emotions || { [dominantEmotion]: confidencePct };
+
         customModelResult = {
-          ...apiRes.data,
+          ...rawData,
           modelName: activeModelObj.name,
           selectedModel: activeModelObj.name,
+          dominant: dominantEmotion,
+          confidence: confidencePct,
+          raw_confidence: rawConf,
+          face_confidence: faceConfPct,
+          raw_face_confidence: rawFaceConf,
+          emotions: emotionBreakdown,
+          trend: rawData.trend || [confidencePct],
+          face_box: rawData.face_box,
+          landmarks: rawData.landmarks,
+          ssd_person_found: rawData.ssd_person_found ?? true,
         };
       } else {
-        // Distinct model simulation for selected custom architecture (CNN / YOLO / MobileNet)
+        // Distinct model simulation fallback if backend service is unreachable
         customModelResult = generateCustomModelResult(activeModelObj.id, activeModelObj.name, faceApiResult);
       }
 

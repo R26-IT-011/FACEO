@@ -266,7 +266,9 @@ export default function EmotionResultsPage() {
                   <h3 className="text-4xl md:text-5xl font-light tracking-tight text-white capitalize flex items-center gap-3">
                     {customModelData.dominant}
                     <span className="text-sm font-mono text-purple-400 bg-purple-950/60 border border-purple-500/30 px-2.5 py-0.5 rounded-full font-normal">
-                      {(customModelData.confidence / 100).toFixed(2)}
+                      {rawCustom.raw_confidence !== undefined
+                        ? rawCustom.raw_confidence.toFixed(4)
+                        : (customModelData.confidence / 100).toFixed(2)}
                     </span>
                   </h3>
                 </div>
@@ -275,6 +277,21 @@ export default function EmotionResultsPage() {
                   <p className="text-3xl font-light text-purple-300">{customModelData.confidence}%</p>
                 </div>
               </div>
+
+              {/* Extra Backend Metadata (Face Box & SSD Detection) */}
+              {rawCustom.face_box && Array.isArray(rawCustom.face_box) && (
+                <div className="mb-6 p-3 rounded-xl bg-purple-950/30 border border-purple-500/20 flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono text-purple-200/90">
+                  <div className="flex items-center gap-2">
+                    <Scan className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Face Box: [{rawCustom.face_box.join(", ")}]</span>
+                  </div>
+                  {rawCustom.ssd_person_found && (
+                    <span className="bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded text-[9px] uppercase tracking-wider font-semibold">
+                      SSD Person Detected
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* Emotion Breakdown */}
               <div className="mb-6">
