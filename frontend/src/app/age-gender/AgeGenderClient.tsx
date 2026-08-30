@@ -11,7 +11,7 @@ import SessionTimer from "@/shared/components/SessionTimer";
 import AnalysisLoader from "@/shared/components/AnalysisLoader";
 import { loadModels, detectFaceAndEmotions } from "@/utils/faceApi";
 import { analyzeImage, analyzeLiveSession } from "@/shared/services/ApiClient";
-import { getBase64Resized } from "@/utils/imageUtils";
+import { getBase64Resized, normalizeBrightness, detectSpectacles } from "@/utils/imageUtils";
 
 const AGE_GENDER_MODELS = [
   {
@@ -21,6 +21,7 @@ const AGE_GENDER_MODELS = [
     badge: "Default • Diverse",
     stack: "FairFace / DeepFace",
     datasets: "FairFace, UTKFace",
+    bestFor: "both" as const,
   },
   {
     id: "deepface_ensemble",
@@ -29,6 +30,7 @@ const AGE_GENDER_MODELS = [
     badge: "High Accuracy",
     stack: "VGG-Face / ResNet",
     datasets: "IMDB-WIKI, VGGFace2",
+    bestFor: "upload" as const,
   },
   {
     id: "utkface_resnet",
@@ -37,6 +39,7 @@ const AGE_GENDER_MODELS = [
     badge: "Deep Feature",
     stack: "ResNet-50 / OpenCV DNN",
     datasets: "UTKFace, Adience",
+    bestFor: "upload" as const,
   },
   {
     id: "ssrnet",
@@ -45,8 +48,16 @@ const AGE_GENDER_MODELS = [
     badge: "Real-time Fast",
     stack: "SSR-Net / MobileNetV2",
     datasets: "MegaAge-Asian, IMDB",
+    bestFor: "live" as const,
   },
 ];
+
+/** Colours + labels for the bestFor recommendation tag */
+const BEST_FOR_META = {
+  live:   { label: "Live",          cls: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" },
+  upload: { label: "Upload",        cls: "bg-sky-500/20    text-sky-300    border-sky-500/30"     },
+  both:   { label: "Live + Upload", cls: "bg-violet-500/20 text-violet-300 border-violet-500/30" },
+};
 
 export default function AgeGenderPage() {
   const router = useRouter();
@@ -65,6 +76,14 @@ export default function AgeGenderPage() {
 
   // Live data
   const [liveDemographics, setLiveDemographics] = useState({ age: 0, gender: "", probability: 0 });
+
+  // Bounding box from face-api (percentage coordinates relative to video container)
+  const [faceBox, setFaceBox] = useState<{
+    xPct: number; yPct: number; wPct: number; hPct: number; confidence: number;
+  } | null>(null);
+
+  // Spectacles detection result (live only, never stored or sent to backend)
+  const [spectacles, setSpectacles] = useState<{ detected: boolean; confidence: number } | null>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -145,16 +164,23 @@ export default function AgeGenderPage() {
       if (!modelsLoaded) return;
 
       try {
+        // Keep the original blob for backend submission — never modify it.
         capturedFramesRef.current.push(blob);
+
         const url = URL.createObjectURL(blob);
         const img = new Image();
         img.src = url;
         await new Promise((resolve) => {
           img.onload = resolve;
         });
-
-        const detections = await detectFaceAndEmotions(img);
         URL.revokeObjectURL(url);
+
+        // Normalize brightness for the detection pass only.
+        // normalizeBrightness() amplifies dark frames uniformly (same gain on
+        // R, G, B) so colour ratios — and therefore gender cues — are unchanged.
+        // In normal lighting it returns the canvas with no pixel modification.
+        const detectionCanvas = normalizeBrightness(img);
+        const detections = await detectFaceAndEmotions(detectionCanvas);
 
         if (detections && detections.length > 0) {
           const det = detections[0];
@@ -174,6 +200,29 @@ export default function AgeGenderPage() {
             gender: det.gender,
             probability: Math.round(det.genderProbability * 100),
           });
+
+          // Extract bounding box as percentages so it scales with the display container.
+          const box   = det.detection.box;
+          const cW    = detectionCanvas.width  || 1;
+          const cH    = detectionCanvas.height || 1;
+          const conf  = Math.round(det.detection.score * 100);
+          setFaceBox({
+            xPct: (box.x      / cW) * 100,
+            yPct: (box.y      / cH) * 100,
+            wPct: (box.width  / cW) * 100,
+            hPct: (box.height / cH) * 100,
+            confidence: conf,
+          });
+
+          // Spectacles detection — uses landmark eye points from the same detection.
+          // Read-only canvas operation; does not affect age/gender results at all.
+          const lmPositions: { x: number; y: number }[] =
+            det.landmarks?.positions?.map((p: any) => ({ x: p.x ?? p._x, y: p.y ?? p._y })) ?? [];
+          setSpectacles(detectSpectacles(detectionCanvas, lmPositions));
+        } else {
+          // No face detected — clear the box and spectacles result.
+          setFaceBox(null);
+          setSpectacles(null);
         }
       } catch (error) {
         console.error("Frame processing error", error);
@@ -195,17 +244,50 @@ export default function AgeGenderPage() {
     setSessionStarted(false);
     setIsProcessing(true);
 
+    // Compute the frontend's own median age from ageHistory — this is the
+    // ground-truth of what the user actually saw during live detection.
+    const localAges = ageHistory.current.slice();
+    const localMedianAge =
+      localAges.length > 0
+        ? (() => {
+            const sorted = [...localAges].sort((a, b) => a - b);
+            const mid = Math.floor(sorted.length / 2);
+            return sorted.length % 2 === 0
+              ? Math.round((sorted[mid - 1] + sorted[mid]) / 2)
+              : sorted[mid];
+          })()
+        : null;
+
     try {
-      if (capturedFramesRef.current.length > 0) {
-        // Sample up to 5 frames to send to backend for accurate model aggregation
+      if (capturedFramesRef.current.length > 0 && localAges.length > 0) {
+        // Send up to 5 frames to the backend — primarily to get reliable gender/confidence.
         const sampleFrames = capturedFramesRef.current.slice(-5);
         const response = await analyzeLiveSession("age-gender", sampleFrames, activeModelObj.id);
 
         if (response.status === "success" && response.data) {
+          const backendAge: number = response.data.age ?? localMedianAge ?? 25;
+
+          // Guard: if the backend age deviates more than 8 years from what the
+          // user saw live, anchor to the local median to avoid jarring jumps.
+          const MAX_TOLERABLE_DEVIATION = 8;
+          const anchoredAge =
+            localMedianAge !== null &&
+            Math.abs(backendAge - localMedianAge) > MAX_TOLERABLE_DEVIATION
+              ? localMedianAge
+              : backendAge;
+
+          // Build the age trend from ageHistory so the chart matches live readings.
+          const trend =
+            localAges.length >= 7
+              ? localAges.slice(-7)
+              : localAges.concat(Array(7 - localAges.length).fill(anchoredAge));
+
           sessionStorage.setItem(
             "faceo_age_gender_results",
             JSON.stringify({
               ...response.data,
+              age: anchoredAge,
+              ageTrend: trend,
               selectedModel: activeModelObj.name,
               modelId: activeModelObj.id,
             })
@@ -216,19 +298,22 @@ export default function AgeGenderPage() {
         }
       }
 
-      if (ageHistory.current.length > 0) {
-        const avgAge = Math.round(
-          ageHistory.current.reduce((a, b) => a + b, 0) / ageHistory.current.length
-        );
+      // Backend unavailable or no frames captured — use frontend readings only.
+      if (localAges.length > 0 && localMedianAge !== null) {
+        const trend =
+          localAges.length >= 7
+            ? localAges.slice(-7)
+            : localAges.concat(Array(7 - localAges.length).fill(localMedianAge));
+
         const result = {
-          age: avgAge,
+          age: localMedianAge,
           gender: liveDemographics.gender || "male",
           genderConfidence: liveDemographics.probability || 88,
-          ageTrend: ageHistory.current.slice(-10),
+          ageTrend: trend,
           selectedModel: activeModelObj.name,
           modelId: activeModelObj.id,
           sessionType: "live",
-          duration: 120,
+          duration: 60,
         };
         sessionStorage.setItem("faceo_age_gender_results", JSON.stringify(result));
       } else {
@@ -293,12 +378,47 @@ export default function AgeGenderPage() {
             <ImageUploader onImageSelected={handleImageUpload} isProcessing={isProcessing} />
           ) : (
             <div className="flex flex-col gap-4">
-              <WebcamCapture
-                onFrame={handleFrame}
-                isCapturing={isAnalyzing}
-                captureIntervalMs={2000}
-                onStreamReady={() => setCameraReady(true)}
-              />
+              {/* Webcam + bounding-box overlay */}
+              <div className="relative w-full">
+                <WebcamCapture
+                  onFrame={handleFrame}
+                  isCapturing={isAnalyzing}
+                  captureIntervalMs={2000}
+                  onStreamReady={() => setCameraReady(true)}
+                />
+
+                {/* Face bounding box — shown only when a face is detected */}
+                {isAnalyzing && faceBox && (
+                  <div
+                    className="absolute pointer-events-none"
+                    style={{
+                      // The video inside WebcamCapture is aspect-video, so we
+                      // position relative to the inner video container (which
+                      // starts right after the outer padding of WebcamCapture).
+                      top:    `${faceBox.yPct}%`,
+                      left:   `${faceBox.xPct}%`,
+                      width:  `${faceBox.wPct}%`,
+                      height: `${faceBox.hPct}%`,
+                    }}
+                  >
+                    {/* Animated corner brackets */}
+                    <span className="absolute top-0 left-0  w-4 h-4 border-t-2 border-l-2 border-emerald-400 rounded-tl-sm" />
+                    <span className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-emerald-400 rounded-tr-sm" />
+                    <span className="absolute bottom-0 left-0  w-4 h-4 border-b-2 border-l-2 border-emerald-400 rounded-bl-sm" />
+                    <span className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-emerald-400 rounded-br-sm" />
+
+                    {/* Confidence chip above the box */}
+                    <span
+                      className="absolute -top-6 left-0 text-[10px] font-mono font-semibold
+                                 bg-emerald-500/80 text-white px-2 py-0.5 rounded
+                                 shadow-[0_0_8px_rgba(52,211,153,0.5)] whitespace-nowrap"
+                    >
+                      Face {faceBox.confidence}%
+                    </span>
+                  </div>
+                )}
+              </div>
+
               <div className="flex items-center gap-4">
                 <button
                   onClick={startLiveSession}
@@ -309,12 +429,12 @@ export default function AgeGenderPage() {
                       : "bg-white text-black hover:scale-105 shadow-[0_0_30px_rgba(255,255,255,0.3)]"
                   }`}
                 >
-                  {isAnalyzing ? "Analyzing..." : "Start Analysis (2 Min)"}
+                  {isAnalyzing ? "Analyzing..." : "Start Analysis (1 Min)"}
                 </button>
                 {sessionStarted && (
                   <div className="flex-1">
                     <SessionTimer
-                      durationSeconds={120}
+                      durationSeconds={60}
                       isRunning={isAnalyzing}
                       onComplete={handleSessionComplete}
                       label="Demographics"
@@ -354,22 +474,30 @@ export default function AgeGenderPage() {
                     }`}
                   >
                     <div className="flex-1 pr-2">
-                      <div className="text-xs font-medium tracking-wide flex items-center gap-2">
-                        <span className={isSelected ? "text-white font-semibold" : "text-white/80"}>
-                          {m.name}
-                        </span>
-                        <span
-                          className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${
-                            isSelected ? "bg-white text-black font-bold" : "bg-white/10 text-white/50"
-                          }`}
-                        >
-                          {m.badge}
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-white/40 font-light mt-1 leading-snug">
-                        {m.desc}
-                      </p>
-                    </div>
+                       <div className="text-xs font-medium tracking-wide flex items-center gap-2 flex-wrap">
+                         <span className={isSelected ? "text-white font-semibold" : "text-white/80"}>
+                           {m.name}
+                         </span>
+                         <span
+                           className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${
+                             isSelected ? "bg-white text-black font-bold" : "bg-white/10 text-white/50"
+                           }`}
+                         >
+                           {m.badge}
+                         </span>
+                       </div>
+                       <p className="text-[10px] text-white/40 font-light mt-1 leading-snug">
+                         {m.desc}
+                       </p>
+                       {/* Recommended-for tag */}
+                       <span
+                         className={`inline-block mt-2 text-[9px] font-mono px-2 py-0.5 rounded border ${
+                           BEST_FOR_META[m.bestFor].cls
+                         }`}
+                       >
+                         ✦ Best for {BEST_FOR_META[m.bestFor].label}
+                       </span>
+                     </div>
                     <div
                       className={`w-4 h-4 rounded-full border flex items-center justify-center mt-0.5 shrink-0 transition-colors ${
                         isSelected
@@ -392,26 +520,54 @@ export default function AgeGenderPage() {
               <span className="text-white/20">M2</span>
             </h3>
             {liveDemographics.age > 0 ? (
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-[10px] uppercase tracking-widest text-white/30 mb-1">
-                    Age Estimate
-                  </p>
-                  <p className="text-3xl font-light text-white/90">
-                    {liveDemographics.age - 2}–{liveDemographics.age + 2}
-                  </p>
+              <div className="flex flex-col">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-white/30 mb-1">
+                      Age Estimate
+                    </p>
+                    <p className="text-3xl font-light text-white/90">
+                      {liveDemographics.age - 2}–{liveDemographics.age + 2}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-white/30 mb-1">
+                      Gender
+                    </p>
+                    <p className="text-xl font-light capitalize text-white/90 mt-1.5">
+                      {liveDemographics.gender}{" "}
+                      <span className="text-xs text-white/30 ml-1 font-mono">
+                        {liveDemographics.probability}%
+                      </span>
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-widest text-white/30 mb-1">
-                    Gender
-                  </p>
-                  <p className="text-xl font-light capitalize text-white/90 mt-1.5">
-                    {liveDemographics.gender}{" "}
-                    <span className="text-xs text-white/30 ml-1 font-mono">
-                      {liveDemographics.probability}%
-                    </span>
-                  </p>
-                </div>
+
+                {/* Spectacles row — shown whenever a face is in frame */}
+                {spectacles !== null && (
+                  <div className="mt-4 pt-4 border-t border-white/5">
+                    <p className="text-[10px] uppercase tracking-widest text-white/30 mb-1">Spectacles</p>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          spectacles.detected ? "bg-emerald-400" : "bg-white/20"
+                        }`}
+                      />
+                      <p
+                        className={`text-sm font-light ${
+                          spectacles.detected ? "text-emerald-300" : "text-white/40"
+                        }`}
+                      >
+                        {spectacles.detected ? "Detected" : "Not Detected"}
+                      </p>
+                      {spectacles.detected && (
+                        <span className="text-[10px] font-mono text-white/30 ml-auto">
+                          {spectacles.confidence}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <p className="text-xs text-white/30 italic font-light">Awaiting visual feed...</p>
