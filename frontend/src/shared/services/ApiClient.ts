@@ -37,11 +37,17 @@ async function apiRequest<T>(
   }
 }
 
-export async function analyzeImage(service: string, imageFile: File | Blob): Promise<ApiResponse> {
+export async function analyzeImage(
+  service: string,
+  imageFile: File | Blob,
+  model?: string
+): Promise<ApiResponse> {
   const formData = new FormData();
   formData.append("file", imageFile, "image.jpg");
 
-  return apiRequest(service, "/analyze-image", {
+  const endpoint = model ? `/analyze-image?model=${encodeURIComponent(model)}` : "/analyze-image";
+
+  return apiRequest(service, endpoint, {
     method: "POST",
     body: formData,
   });
@@ -49,14 +55,19 @@ export async function analyzeImage(service: string, imageFile: File | Blob): Pro
 
 export async function analyzeLiveSession(
   service: string,
-  frames: Blob[]
+  frames: Blob[],
+  model?: string
 ): Promise<ApiResponse> {
   const formData = new FormData();
   frames.forEach((frame, i) => {
     formData.append("frames", frame, `frame_${i}.jpg`);
   });
 
-  return apiRequest(service, "/analyze-live-session", {
+  const endpoint = model
+    ? `/analyze-live-session?model=${encodeURIComponent(model)}`
+    : "/analyze-live-session";
+
+  return apiRequest(service, endpoint, {
     method: "POST",
     body: formData,
   });

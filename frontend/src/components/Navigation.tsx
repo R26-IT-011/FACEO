@@ -24,6 +24,13 @@ export default function Navigation() {
 
     const isActive = (path: string) => {
         if (path === "/") return pathname === "/";
+        if (path === "/emotion") {
+            return (
+                pathname === "/emotion" ||
+                pathname.startsWith("/emotionRecognition") ||
+                pathname.startsWith("/lowLightCondition")
+            );
+        }
         return pathname.startsWith(path);
     };
 

@@ -9,8 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 import cv2
 import numpy as np
 
+import requests
+
 from utils.skin_analysis import analyze_skin
-from deepfake_model.predict import predict_authenticity
 
 app = FastAPI(title="Human Authenticity API")
 
@@ -34,8 +35,16 @@ async def analyze_frame(file: UploadFile = File(...)):
     # Execute Module 4 (Developer 4)
     skin_data = analyze_skin(img)
     
-    # Execute Module 3 (Developer 3)
-    authenticity_data = predict_authenticity(img)
+    # Execute Module 3 (Deepfake Service via HTTP)
+    try:
+        df_res = requests.post("http://localhost:8004/analyze-image", files={"file": ("frame.jpg", contents, "image/jpeg")})
+        if df_res.status_code == 200:
+            authenticity_data = df_res.json().get("data", {})
+        else:
+            authenticity_data = {"authenticity": "ERROR", "confidence": 0}
+    except Exception as e:
+        print("Error calling deepfake service:", e)
+        authenticity_data = {"authenticity": "OFFLINE", "confidence": 0}
 
     return {
         "status": "success",

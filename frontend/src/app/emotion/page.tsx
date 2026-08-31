@@ -1,183 +1,138 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import Link from "next/link";
+import Image from "next/image";
 import Navigation from "@/components/Navigation";
-import { motion, AnimatePresence } from "framer-motion";
-import { useRouter } from "next/navigation";
-import ImageUploader from "@/shared/components/ImageUploader";
-import AnalysisLoader from "@/shared/components/AnalysisLoader";
-import { analyzeImage } from "@/shared/services/ApiClient";
-import { loadModels, detectFaceAndEmotions } from "@/utils/faceApi";
-import { getBase64Resized } from "@/utils/imageUtils";
+import { motion } from "framer-motion";
+import { ArrowRight, Sparkles, Moon } from "lucide-react";
 
-const EMOTIONS = ["angry", "happy", "sad", "neutral", "fear"];
-
-const MODEL_OPTIONS = [
-  { id: "ssd_mobilenet_v3", name: "SSD MobileNetV3", desc: "Lightweight & Fast Single-Shot Detector", badge: "Default" },
-  { id: "cnn", name: "CNN Model", desc: "Deep Convolutional Neural Network Feature Extractor", badge: "High Accuracy" },
-  { id: "yolo", name: "YOLO Model", desc: "Real-time Object & Expression Detection", badge: "Real-time" },
-];
-
-export default function EmotionPage() {
-  const router = useRouter();
-  const [selectedModel, setSelectedModel] = useState<string>("ssd_mobilenet_v3");
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [modelsLoaded, setModelsLoaded] = useState(false);
-
-  const activeModelObj = MODEL_OPTIONS.find((m) => m.id === selectedModel) || MODEL_OPTIONS[0];
-
-  useEffect(() => {
-    const init = async () => {
-      const success = await loadModels();
-      setModelsLoaded(success);
-    };
-    init();
-  }, []);
-
-  const handleImageUpload = async (file: File) => {
-    if (!modelsLoaded) return;
-    setIsProcessing(true);
-    try {
-      // Client-side validation
-      const url = URL.createObjectURL(file);
-      const img = new Image();
-      img.src = url;
-      await new Promise((resolve) => { img.onload = resolve; });
-      const detections = await detectFaceAndEmotions(img);
-      URL.revokeObjectURL(url);
-
-      if (!detections || detections.length === 0) {
-        sessionStorage.setItem("faceo_emotion_results", JSON.stringify({
-          error: "No human face was detected in the uploaded image. Please upload a clear photo containing a human face."
-        }));
-        router.push("/results/emotion");
-        return;
-      }
-
-      const uploadedImage = await getBase64Resized(file);
-      const result = await analyzeImage("emotion", file);
-      if (result.status === "success") {
-        sessionStorage.setItem("faceo_emotion_results", JSON.stringify({
-          ...result.data,
-          selectedModel: activeModelObj.name,
-          uploadedImage
-        }));
-        router.push("/results/emotion");
-      } else {
-        // Use mock data if service unavailable
-        const mockResult = generateMockEmotionResult(activeModelObj.name);
-        sessionStorage.setItem("faceo_emotion_results", JSON.stringify({ ...mockResult, uploadedImage }));
-        router.push("/results/emotion");
-      }
-    } catch {
-      const uploadedImage = await getBase64Resized(file).catch(() => undefined);
-      const mockResult = generateMockEmotionResult(activeModelObj.name);
-      sessionStorage.setItem("faceo_emotion_results", JSON.stringify({ ...mockResult, uploadedImage }));
-      router.push("/results/emotion");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
+export default function EmotionSelectionPage() {
   return (
-    <main className="min-h-screen bg-black flex flex-col relative overflow-hidden">
+    <main className="min-h-screen bg-black text-white flex flex-col relative overflow-hidden">
       <Navigation />
-      <AnimatePresence>{isProcessing && <AnalysisLoader message={`Detecting Emotions using ${activeModelObj.name}`} />}</AnimatePresence>
 
-      <div className="flex-1 w-full max-w-7xl mx-auto px-6 pt-28 pb-10 flex flex-col lg:flex-row gap-6 relative z-10">
-        {/* Main Area */}
-        <div className="flex-1 flex flex-col">
-          {/* Header */}
+      {/* Subtle background ambient blur spots */}
+      <div className="absolute top-1/3 left-1/4 w-96 h-96 bg-white/5 blur-[140px] rounded-full pointer-events-none" />
+      <div className="absolute bottom-1/3 right-1/4 w-96 h-96 bg-amber-500/5 blur-[140px] rounded-full pointer-events-none" />
+
+      <div className="flex-1 w-full max-w-7xl mx-auto px-6 pt-28 pb-16 flex flex-col justify-center relative z-10">
+        {/* Header section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="text-center max-w-3xl mx-auto mb-10 md:mb-14"
+        >
+          <span className="text-[11px] font-mono tracking-[0.3em] uppercase bg-white/10 border border-white/15 px-4 py-1.5 rounded-full text-white/80 inline-block mb-4">
+            FACEO ANALYTICS MODULES
+          </span>
+          <h1 className="text-3xl md:text-5xl font-light tracking-tight mb-4">
+            Choose Emotion Analysis Mode
+          </h1>
+          <p className="text-white/50 text-base md:text-lg font-light leading-relaxed">
+            Select the environmental condition module best suited for your facial recognition workflow.
+          </p>
+        </motion.div>
+
+        {/* Selection Cards Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-10 max-w-6xl mx-auto w-full">
+          {/* Card 1: Emotion Recognition Part */}
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-6"
+            transition={{ duration: 0.5, delay: 0.1 }}
           >
-            <h1 className="text-3xl md:text-4xl font-light tracking-tight mb-2">Emotion Detection</h1>
-            <p className="text-white/40 text-sm font-light">
-              Detect 5 core facial expressions — Angry, Happy, Sad, Neutral, Fear from uploaded photos
-            </p>
+            <Link
+              href="/emotionRecognition"
+              className="group relative block w-full aspect-[4/3] md:aspect-[16/10] rounded-3xl overflow-hidden bg-black border border-white/20 hover:border-white/50 transition-all duration-500 shadow-2xl hover:shadow-[0_0_45px_rgba(255,255,255,0.15)]"
+            >
+              {/* Darkened Low-Opacity Image */}
+              <Image
+                src="/emotion.png"
+                alt="Emotion Recognition Part"
+                fill
+                priority
+                className="object-cover object-center opacity-55 brightness-75 contrast-110 group-hover:scale-105 group-hover:opacity-70 group-hover:brightness-90 transition-all duration-700 ease-out"
+              />
+
+              {/* Dark Gradient Overlay for Maximum Text Contrast */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/30 pointer-events-none" />
+
+              {/* Card Text Content Overlay */}
+              <div className="absolute inset-0 p-6 md:p-10 flex flex-col justify-between z-10">
+                <div className="flex justify-between items-start">
+                  <span className="inline-flex items-center gap-1.5 text-[10px] md:text-xs font-mono font-semibold tracking-widest uppercase bg-black/80 backdrop-blur-md border border-white/30 px-3.5 py-1.5 rounded-full text-white shadow-md">
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                    Standard Illumination
+                  </span>
+                </div>
+
+                <div className="bg-black/40 backdrop-blur-md p-5 md:p-6 rounded-2xl border border-white/10 group-hover:border-white/20 transition-colors">
+                  <h2 className="text-2xl md:text-3xl font-semibold tracking-tight text-white mb-2 group-hover:translate-x-1 transition-transform duration-300 drop-shadow-md">
+                    Emotion Recognition Part
+                  </h2>
+                  <p className="text-white/85 text-xs md:text-sm font-normal leading-relaxed max-w-md mb-5 drop-shadow">
+                    Multi-model detection engine (SSD MobileNetV3, CNN, YOLO) for accurate facial expression classification.
+                  </p>
+
+                  <div className="inline-flex items-center gap-2 text-xs md:text-sm font-semibold tracking-wide text-black bg-white group-hover:bg-cyan-300 px-5 py-2.5 rounded-full transition-all group-hover:gap-3 shadow-lg">
+                    <span>Explore Emotion Recognition</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </div>
+                </div>
+              </div>
+            </Link>
           </motion.div>
 
-          {/* Image Uploader */}
-          <ImageUploader onImageSelected={handleImageUpload} isProcessing={isProcessing} />
-        </div>
+          {/* Card 2: Low Light Condition Part */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+          >
+            <Link
+              href="/lowLightCondition"
+              className="group relative block w-full aspect-[4/3] md:aspect-[16/10] rounded-3xl overflow-hidden bg-black border border-white/20 hover:border-amber-500/60 transition-all duration-500 shadow-2xl hover:shadow-[0_0_45px_rgba(245,158,11,0.22)]"
+            >
+              {/* Darkened Low-Opacity Image */}
+              <Image
+                src="/lowLight.png"
+                alt="Low Light Condition Part"
+                fill
+                priority
+                className="object-cover object-center opacity-55 brightness-75 contrast-110 group-hover:scale-105 group-hover:opacity-70 group-hover:brightness-90 transition-all duration-700 ease-out"
+              />
 
-        {/* Sidebar */}
-        <div className="w-full lg:w-80 flex flex-col gap-4">
-          {/* Model Selection Panel */}
-          <div className="glass-panel p-6">
-            <h3 className="text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase mb-4 flex justify-between items-center">
-              <span>Select Model</span>
-              <span className="text-[9px] bg-white/10 text-white/70 px-2 py-0.5 rounded font-mono font-normal">
-                {activeModelObj.name}
-              </span>
-            </h3>
-            <div className="space-y-2.5">
-              {MODEL_OPTIONS.map((m) => {
-                const isSelected = selectedModel === m.id;
-                return (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => setSelectedModel(m.id)}
-                    className={`w-full text-left p-3.5 rounded-xl border transition-all flex items-start justify-between group ${
-                      isSelected
-                        ? "bg-white/10 border-white/40 text-white shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-                        : "bg-white/5 border-white/5 text-white/50 hover:bg-white/10 hover:border-white/20 hover:text-white/80"
-                    }`}
-                  >
-                    <div className="flex-1 pr-2">
-                      <div className="text-xs font-medium tracking-wide flex items-center gap-2">
-                        <span className={isSelected ? "text-white font-semibold" : "text-white/80"}>{m.name}</span>
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${
-                          isSelected ? "bg-white text-black font-bold" : "bg-white/10 text-white/50"
-                        }`}>
-                          {m.badge}
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-white/40 font-light mt-1 leading-snug">{m.desc}</p>
-                    </div>
-                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center mt-0.5 shrink-0 transition-colors ${
-                      isSelected ? "border-white bg-white" : "border-white/20 group-hover:border-white/40"
-                    }`}>
-                      {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+              {/* Dark Gradient Overlay for Maximum Text Contrast */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/30 pointer-events-none" />
 
-          <div className="glass-panel p-6">
-            <h3 className="text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase mb-4">
-              Supported Emotions
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {EMOTIONS.map((e) => (
-                <span
-                  key={e}
-                  className="text-[10px] bg-white/5 border border-white/10 px-3 py-1 rounded-full text-white/50 uppercase tracking-widest"
-                >
-                  {e}
-                </span>
-              ))}
-            </div>
-          </div>
+              {/* Card Text Content Overlay */}
+              <div className="absolute inset-0 p-6 md:p-10 flex flex-col justify-between z-10">
+                <div className="flex justify-between items-start">
+                  <span className="inline-flex items-center gap-1.5 text-[10px] md:text-xs font-mono font-semibold tracking-widest uppercase bg-black/80 backdrop-blur-md border border-amber-500/40 px-3.5 py-1.5 rounded-full text-amber-300 shadow-md">
+                    <Moon className="w-3.5 h-3.5 text-amber-400" />
+                    Low Light Enhanced
+                  </span>
+                </div>
+
+                <div className="bg-black/40 backdrop-blur-md p-5 md:p-6 rounded-2xl border border-white/10 group-hover:border-amber-500/30 transition-colors">
+                  <h2 className="text-2xl md:text-3xl font-semibold tracking-tight text-white mb-2 group-hover:translate-x-1 transition-transform duration-300 drop-shadow-md">
+                    Low Light Condition Part
+                  </h2>
+                  <p className="text-white/85 text-xs md:text-sm font-normal leading-relaxed max-w-md mb-5 drop-shadow">
+                    Zero-DCE curve estimation & adaptive illuminance normalization engineered for dim and night settings.
+                  </p>
+
+                  <div className="inline-flex items-center gap-2 text-xs md:text-sm font-semibold tracking-wide text-black bg-amber-400 group-hover:bg-amber-300 px-5 py-2.5 rounded-full transition-all group-hover:gap-3 shadow-lg">
+                    <span>Explore Low Light Condition</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </div>
+                </div>
+              </div>
+            </Link>
+          </motion.div>
         </div>
       </div>
     </main>
   );
-}
-
-function generateMockEmotionResult(modelName: string = "SSD MobileNetV3") {
-  const emotions = { happy: 75, sad: 5, angry: 3, fear: 2, neutral: 15 };
-  return {
-    dominant: "happy",
-    confidence: 75,
-    emotions,
-    trend: [40, 55, 60, 65, 70, 68, 75],
-    selectedModel: modelName,
-    sessionType: "upload",
-  };
 }
