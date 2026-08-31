@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+python-multipart
+tensorflow
+numpy
+Pillow
+opencv-contrib-python>=4.8,<5.0
