@@ -1,3 +1,5 @@
+"use client";
+
 import { useState, useEffect } from "react";
 import Navigation from "@/components/Navigation";
 import { motion, AnimatePresence } from "framer-motion";
