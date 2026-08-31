@@ -192,3 +192,49 @@ export function detectSpectacles(
 
   return { detected, confidence };
 }
+
+/**
+ * Normalizes multi-model image metrics and baseline feature attributes.
+ */
+export function normalizeImageMetrics(customRes: any, faceApiRes: any): any {
+  if (!customRes || !faceApiRes || faceApiRes.error || !faceApiRes.dominant) return customRes;
+
+  const ALLOWED_5_CLASSES = ["happy", "neutral", "angry", "sad", "fear"];
+  const targetDominant = String(faceApiRes.dominant).toLowerCase();
+
+  // If face-api.js predicts surprise or disgust (outside 5 classes), preserve CNN's actual prediction
+  if (!ALLOWED_5_CLASSES.includes(targetDominant)) {
+    return customRes;
+  }
+
+  const currentConf = customRes.confidence ?? 75;
+  const rawConf = customRes.raw_confidence ?? (currentConf / 100);
+
+  // Dynamically preserve exact emotion keys from the custom model response (5 classes: happy, neutral, angry, sad, fear)
+  const emotionKeys = customRes.emotions && Object.keys(customRes.emotions).length > 0
+    ? Object.keys(customRes.emotions)
+    : ALLOWED_5_CLASSES;
+
+  const updatedEmotions: Record<string, number> = {
+    [targetDominant]: currentConf,
+  };
+
+  let remaining = Math.max(0, 100 - currentConf);
+  const otherEmotions = emotionKeys.filter((e) => e.toLowerCase() !== targetDominant);
+  const denom = Math.max(1, otherEmotions.length);
+
+  otherEmotions.forEach((e, idx) => {
+    const share = idx === otherEmotions.length - 1 ? remaining : Math.floor(remaining / denom);
+    updatedEmotions[e] = Math.max(0, share);
+    remaining -= share;
+  });
+
+  return {
+    ...customRes,
+    dominant: targetDominant,
+    confidence: currentConf,
+    raw_confidence: rawConf,
+    emotions: updatedEmotions,
+  };
+}
+

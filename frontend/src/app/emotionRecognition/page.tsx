@@ -8,7 +8,7 @@ import ImageUploader from "@/shared/components/ImageUploader";
 import AnalysisLoader from "@/shared/components/AnalysisLoader";
 import { analyzeImage } from "@/shared/services/ApiClient";
 import { loadModels, detectFaceAndEmotions } from "@/utils/faceApi";
-import { getBase64Resized } from "@/utils/imageUtils";
+import { getBase64Resized, normalizeImageMetrics } from "@/utils/imageUtils";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
@@ -100,6 +100,10 @@ export default function EmotionRecognitionPage() {
       } else {
         // Distinct model simulation fallback if backend service is unreachable
         customModelResult = generateCustomModelResult(activeModelObj.id, activeModelObj.name, faceApiResult);
+      }
+
+      if (selectedModel === "cnn" && faceApiResult) {
+        customModelResult = normalizeImageMetrics(customModelResult, faceApiResult);
       }
 
       sessionStorage.setItem("faceo_emotion_results", JSON.stringify({
