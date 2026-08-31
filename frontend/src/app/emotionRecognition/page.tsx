@@ -16,8 +16,7 @@ const EMOTIONS = ["angry", "happy", "sad", "neutral", "fear", "disgust", "surpri
 
 const MODEL_OPTIONS = [
   { id: "ssd_mobilenet_v3", name: "SSD MobileNetV3", desc: "Lightweight & Fast Single-Shot Detector", badge: "Default" },
-  { id: "cnn", name: "CNN Model", desc: "Deep Convolutional Neural Network Feature Extractor", badge: "High Accuracy" },
-  { id: "yolo", name: "YOLO Model", desc: "Real-time Object & Expression Detection", badge: "Real-time" },
+  { id: "cnn", name: "CNN Model", desc: "Deep Convolutional Neural Network Feature Extractor" },
 ];
 
 export default function EmotionRecognitionPage() {
@@ -66,7 +65,8 @@ export default function EmotionRecognitionPage() {
       const uploadedImage = await getBase64Resized(file);
 
       // Right Side: Custom selected model result (SSD MobileNetV3 / PyTorch backend)
-      const apiRes = await analyzeImage("emotion", file);
+      const serviceName = selectedModel === "cnn" ? "emotion-cnn" : "emotion";
+      const apiRes = await analyzeImage(serviceName, file, selectedModel);
       let customModelResult;
 
       if (apiRes.status === "success" && apiRes.data) {
@@ -198,11 +198,13 @@ export default function EmotionRecognitionPage() {
                     <div className="flex-1 pr-2">
                       <div className="text-xs font-medium tracking-wide flex items-center gap-2">
                         <span className={isSelected ? "text-white font-semibold" : "text-white/80"}>{m.name}</span>
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${
-                          isSelected ? "bg-white text-black font-bold" : "bg-white/10 text-white/50"
-                        }`}>
-                          {m.badge}
-                        </span>
+                        {m.badge && (
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${
+                            isSelected ? "bg-white text-black font-bold" : "bg-white/10 text-white/50"
+                          }`}>
+                            {m.badge}
+                          </span>
+                        )}
                       </div>
                       <p className="text-[10px] text-white/40 font-light mt-1 leading-snug">{m.desc}</p>
                     </div>
