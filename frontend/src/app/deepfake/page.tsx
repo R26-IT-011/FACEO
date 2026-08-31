@@ -1,5 +1,3 @@
-"use client";
-
 import { useState, useEffect } from "react";
 import Navigation from "@/components/Navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -65,16 +63,13 @@ export default function DeepfakePage() {
         router.push("/results/deepfake");
       } else {
         sessionStorage.setItem("faceo_deepfake_results", JSON.stringify({
-          ...generateMockResult(activeModelObj.name),
-          uploadedImage
+          error: "Backend analysis failed. Please ensure the deepfake service is running and models are loaded."
         }));
         router.push("/results/deepfake");
       }
     } catch {
-      const uploadedImage = await getBase64Resized(file).catch(() => undefined);
       sessionStorage.setItem("faceo_deepfake_results", JSON.stringify({
-        ...generateMockResult(activeModelObj.name),
-        uploadedImage
+        error: "Failed to connect to the analysis service. Please try again later."
       }));
       router.push("/results/deepfake");
     } finally {
@@ -172,17 +167,4 @@ export default function DeepfakePage() {
       </div>
     </main>
   );
-}
-
-function generateMockResult(modelName: string = "SwinBase Model") {
-  return {
-    authenticity: "REAL",
-    realProbability: 92,
-    deepfakeProbability: 8,
-    confidence: 92,
-    riskLevel: "Low",
-    selectedModel: modelName,
-    reason: `The ${modelName} analyzed the facial structures and determined the subject is authentic. No synthetic GAN artifacts or deepfake distortions were detected.`,
-    sessionType: "upload",
-  };
 }
