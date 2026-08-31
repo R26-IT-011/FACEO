@@ -4,6 +4,7 @@
 const SERVICE_URLS: Record<string, string> = {
   "age-gender": "http://localhost:8001",
   "emotion": "http://localhost:8002",
+  "emotion-cnn": "http://localhost:8005",
   "face-condition-detection": "http://localhost:8003",
   "face-condition": "http://localhost:8003",
   "bruise-detection": "http://localhost:8003",

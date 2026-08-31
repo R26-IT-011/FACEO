@@ -32,11 +32,15 @@ start "Face Condition - Port 8003" cmd /k "cd /d "%BACKEND_DIR%" && call venv\Sc
 echo [+] Starting Deepfake Detection Service (Port 8004)...
 start "Deepfake - Port 8004" cmd /k "cd /d "%BACKEND_DIR%" && call venv\Scripts\activate.bat && python deepfake-service/main.py"
 
-:: 6. Low-Light Emotion Service (Port 8006)
+:: 6. Emotion CNN Service (Port 8005)
+echo [+] Starting Emotion CNN Service (Port 8005)...
+start "Emotion CNN - Port 8005" cmd /k "cd /d "%BACKEND_DIR%" && call venv\Scripts\activate.bat && python emotion-cnn-service/main.py"
+
+:: 7. Low-Light Emotion Service (Port 8006)
 echo [+] Starting Low-Light Emotion Service (Port 8006)...
 start "Low-Light Emotion - Port 8006" cmd /k "cd /d "%BACKEND_DIR%" && call venv\Scripts\activate.bat && python low-light-service/main.py"
 
-:: 7. Frontend Dev Server (Port 3000)
+:: 8. Frontend Dev Server (Port 3000)
 echo [+] Starting Next.js Frontend (Port 3000)...
 start "Next.js Frontend - Port 3000" cmd /k "cd /d "%FRONTEND_DIR%" && npm run dev"
 
