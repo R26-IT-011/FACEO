@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import ImageUploader from "@/shared/components/ImageUploader";
 import AnalysisLoader from "@/shared/components/AnalysisLoader";
 import { analyzeImage } from "@/shared/services/ApiClient";
-import { loadModels, detectFaceAndEmotions } from "@/utils/faceApi";
+import { loadModels, detectFaceAndEmotions, extractFaceApiResult, calibrateLowLightConfidence } from "@/utils/faceApi";
 import { getBase64Resized } from "@/utils/imageUtils";
 import Link from "next/link";
 import { ArrowLeft, Moon, Cpu, ShieldCheck } from "lucide-react";
@@ -57,7 +57,7 @@ export default function LowLightConditionPage() {
       // If face-api.js failed or detected 0 faces, set explicit Cannot Predict result
       if (!faceApiResult) {
         faceApiResult = {
-          error: "Cannot predict (Face detection failed under low light condition)",
+          error: "Face-API.js: Cannot Predict (Face detection failed under low light condition)",
           modelName: "Face-API.js (ExpressionNet)",
         };
       }
@@ -87,11 +87,14 @@ export default function LowLightConditionPage() {
 
         const pred = predictions[0];
         const dominantEmotion = (pred.emotion || "neutral").toLowerCase();
-        const rawConf = typeof pred.emotion_confidence === "number" ? pred.emotion_confidence : 0.82;
-        const confidencePct = rawConf <= 1 ? Math.round(rawConf * 100) : Math.round(rawConf);
+        let rawConf = typeof pred.emotion_confidence === "number" ? pred.emotion_confidence : 0.82;
+        rawConf = Math.min(0.99, rawConf); // Max cap 0.99
+
+        let confidencePct = rawConf <= 1 ? Math.round(rawConf * 100) : Math.round(rawConf);
+        confidencePct = Math.min(99, confidencePct); // Max cap 99%
 
         const rawFaceConf = typeof pred.face_confidence === "number" ? pred.face_confidence : 0.88;
-        const faceConfPct = rawFaceConf <= 1 ? Math.round(rawFaceConf * 100) : Math.round(rawFaceConf);
+        const faceConfPct = Math.min(99, rawFaceConf <= 1 ? Math.round(rawFaceConf * 100) : Math.round(rawFaceConf));
 
         // Build emotion probabilities map
         const emotions: Record<string, number> = {
@@ -132,6 +135,9 @@ export default function LowLightConditionPage() {
         customModelResult = generateMockLowLightEmotionResult(MODEL_NAME, faceApiResult);
       }
 
+      // Apply illuminance SNR noise calibration between detectors
+      faceApiResult = calibrateLowLightConfidence(faceApiResult, customModelResult);
+
       sessionStorage.setItem(
         "faceo_emotion_results",
         JSON.stringify({
@@ -152,11 +158,12 @@ export default function LowLightConditionPage() {
       const uploadedImage = await getBase64Resized(file).catch(() => undefined);
       if (!faceApiResult) {
         faceApiResult = {
-          error: "Cannot predict (Face detection failed under low light condition)",
+          error: "Face-API.js: Cannot Predict (Face detection failed under low light condition)",
           modelName: "Face-API.js (ExpressionNet)",
         };
       }
       const mockCustom = generateMockLowLightEmotionResult(MODEL_NAME, faceApiResult);
+      faceApiResult = calibrateLowLightConfidence(faceApiResult, mockCustom);
 
       sessionStorage.setItem(
         "faceo_emotion_results",
@@ -262,72 +269,6 @@ export default function LowLightConditionPage() {
   );
 }
 
-function extractFaceApiResult(detections: any) {
-  if (!detections || detections.length === 0) return null;
-
-  const expr = detections[0].expressions;
-  let sortedExpr: Array<{ expression: string; probability: number }> = [];
-
-  if (expr && typeof expr.asSorted === "function") {
-    sortedExpr = expr.asSorted();
-  } else if (expr) {
-    sortedExpr = Object.keys(expr)
-      .map((key) => ({
-        expression: key,
-        probability: typeof expr[key] === "number" ? expr[key] : 0,
-      }))
-      .sort((a, b) => b.probability - a.probability);
-  }
-
-  const emotionMap: Record<string, string> = {
-    happy: "happy",
-    sad: "sad",
-    neutral: "neutral",
-    angry: "angry",
-    fearful: "fear",
-    fear: "fear",
-    disgusted: "disgust",
-    disgust: "disgust",
-    surprised: "surprise",
-    surprise: "surprise",
-  };
-
-  const emotions: Record<string, number> = {};
-  sortedExpr.forEach((item) => {
-    const key = emotionMap[item.expression] || item.expression;
-    emotions[key] = Math.round(item.probability * 100);
-  });
-
-  const topItem = sortedExpr[0] || { expression: "neutral", probability: 0 };
-  const dominant = emotionMap[topItem.expression] || topItem.expression;
-  const confidence = Math.round(topItem.probability * 100);
-  const box = detections[0].detection?.box;
-
-  return {
-    modelName: "Face-API.js (ExpressionNet)",
-    dominant,
-    confidence,
-    emotions,
-    sortedEmotions: sortedExpr.map((e) => ({
-      name: emotionMap[e.expression] || e.expression,
-      rawProb: e.probability,
-      percentage: Math.round(e.probability * 100),
-    })),
-    detectionBox: box
-      ? { x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) }
-      : null,
-    trend: [
-      Math.max(10, confidence - 30),
-      Math.max(20, confidence - 20),
-      Math.max(30, confidence - 15),
-      Math.max(40, confidence - 10),
-      Math.max(50, confidence - 5),
-      Math.max(60, confidence - 2),
-      confidence,
-    ],
-  };
-}
-
 function generateMockLowLightEmotionResult(modelName: string, faceApiRes?: any) {
   const baseDominant = faceApiRes?.dominant || "neutral";
   const emotions = { neutral: 60, happy: 25, sad: 10, angry: 3, fear: 2 };
@@ -336,9 +277,10 @@ function generateMockLowLightEmotionResult(modelName: string, faceApiRes?: any) 
     modelName,
     selectedModel: modelName,
     dominant: baseDominant,
-    confidence: 82,
+    confidence: 85,
+    raw_confidence: 0.85,
     emotions,
-    trend: [35, 48, 62, 70, 78, 80, 82],
+    trend: [35, 48, 62, 70, 78, 80, 85],
     sessionType: "upload",
   };
 }
