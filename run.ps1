@@ -51,11 +51,15 @@ Start-Process powershell -WindowStyle Normal -ArgumentList "-NoExit", "-Command"
 Write-Host " -> Starting Deepfake Detection Service (Port 8004)..." -ForegroundColor Gray
 Start-Process powershell -WindowStyle Normal -ArgumentList "-NoExit", "-Command", "cd `"$BackendDir`\"; .\venv\Scripts\Activate.ps1; python deepfake-service/main.py"
 
-# 6. Low-Light Emotion Service (Port 8006)
+# 6. Emotion CNN Service (Port 8005)
+Write-Host " -> Starting Emotion CNN Service (Port 8005)..." -ForegroundColor Gray
+Start-Process powershell -WindowStyle Normal -ArgumentList "-NoExit", "-Command", "cd `"$BackendDir`\"; .\venv\Scripts\Activate.ps1; python emotion-cnn-service/main.py"
+
+# 7. Low-Light Emotion Service (Port 8006)
 Write-Host " -> Starting Low-Light Emotion Service (Port 8006)..." -ForegroundColor Gray
 Start-Process powershell -WindowStyle Normal -ArgumentList "-NoExit", "-Command", "cd `"$BackendDir`\"; .\venv\Scripts\Activate.ps1; python low-light-service/main.py"
 
-# 7. Frontend Dev Server (Port 3000)
+# 8. Frontend Dev Server (Port 3000)
 Write-Host " -> Starting Next.js Frontend (Port 3000)..." -ForegroundColor Gray
 Start-Process powershell -WindowStyle Normal -ArgumentList "-NoExit", "-Command", "cd `"$FrontendDir`\"; npm run dev"
 
