@@ -6,6 +6,7 @@ const SERVICE_URLS: Record<string, string> = {
   "emotion": "http://localhost:8002",
   "bruise-detection": "http://localhost:8003",
   "deepfake": "http://localhost:8004",
+  "low-light": "http://localhost:8006",
 };
 
 export type ServiceName = keyof typeof SERVICE_URLS;
