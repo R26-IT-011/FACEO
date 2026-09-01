@@ -6,32 +6,32 @@ import { motion } from "framer-motion";
 export default function TechnologyPage() {
     const technologies = [
         {
-            title: "Emotion Detection",
+            title: "Cross-Cultural Emotion Detection",
             module: "Module 1",
-            description: "Utilizes @vladmandic/face-api to accurately map 7 core facial expressions in real-time. The model is optimized for edge-device tracking to maintain high framerates.",
+            description: "Multi-model facial emotion recognition architecture featuring SSD MobileNetV3 (default real-time detector), CNN Deep Feature Extractor, and YOLO expression classifiers evaluated across global datasets.",
             datasets: ["FER2013", "AffectNet", "RAF-DB"],
-            stack: "TensorFlow.js / WebGL",
+            stack: "TensorFlow.js / DeepFace / FastAPI",
         },
         {
             title: "Demographic Estimation",
             module: "Module 2",
-            description: "Employs client-side lightweight neural networks to estimate age ranges and gender probabilities dynamically as the user interacts with the camera.",
-            datasets: ["IMDB-WIKI", "UTKFace"],
-            stack: "TensorFlow.js / WebGL",
+            description: "Multi-architecture demographic estimation offering FairFace (cross-ethnic South Asian balance), DeepFace Ensemble (VGG-Face representation), UTKFace ResNet-50, and real-time SSR-Net.",
+            datasets: ["FairFace", "UTKFace", "IMDB-WIKI", "Adience"],
+            stack: "FastAPI / DeepFace / TensorFlow.js",
         },
         {
-            title: "Deepfake Identification",
+            title: "Facial Marks & Bruises Detection",
             module: "Module 3",
-            description: "A fast, Python-backend classification system to verify human authenticity within the first 10 seconds of analysis, utilizing MobileNetV2 for low latency.",
-            datasets: ["FaceForensics++", "DeepFake Detection Challenge"],
-            stack: "FastAPI / PyTorch",
+            description: "State-of-the-art YOLOv8 and YOLOv11 deep vision models providing real-time bounding-box detection and localization of scars, bruises, and moles with fine-grained confidence scoring.",
+            datasets: ["DDI (Diverse Dermatology Images)", "ACNE04", "Roboflow Skin Datasets"],
+            stack: "FastAPI / PyTorch / OpenCV",
         },
         {
-            title: "Skin Characteristic Analysis",
+            title: "Deepfake Authenticity & Verification",
             module: "Module 4",
-            description: "Advanced OpenCV texture analysis to determine skin tone distribution and detect blemishes via localized variance mapping.",
-            datasets: ["Custom Clinical Dermatology Sets"],
-            stack: "FastAPI / OpenCV / NumPy",
+            description: "Multi-spectral authenticity verification system employing SwinBase Vision Transformers, CNN artifact classifiers, Error Level Analysis (ELA), and FFT frequency-domain spectral analysis.",
+            datasets: ["FaceForensics++", "DeepFake Detection Challenge (DFDC)"],
+            stack: "FastAPI / PyTorch / OpenCV Forensics",
         },
     ];
 
@@ -48,8 +48,8 @@ export default function TechnologyPage() {
                 >
                     <h1 className="text-4xl md:text-5xl font-light tracking-tight mb-4">Technology & Research</h1>
                     <p className="text-white/50 max-w-2xl mx-auto font-light">
-                        A hybrid edge-and-cloud architecture designed for mid-range hardware.
-                        Client-side inferences guarantee privacy and speed, while heavy authenticity classifications are securely handled by a Python backend.
+                        A modular, hybrid edge-and-cloud architecture designed for accuracy, speed, and real-time face intelligence.
+                        Client-side models ensure instant interactivity, while dedicated FastAPI microservices handle deep neural inference and multi-spectral classification.
                     </p>
                 </motion.div>
 

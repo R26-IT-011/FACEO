@@ -4,8 +4,12 @@
 const SERVICE_URLS: Record<string, string> = {
   "age-gender": "http://localhost:8001",
   "emotion": "http://localhost:8002",
+  "emotion-cnn": "http://localhost:8005",
+  "face-condition-detection": "http://localhost:8003",
+  "face-condition": "http://localhost:8003",
   "bruise-detection": "http://localhost:8003",
   "deepfake": "http://localhost:8004",
+  "low-light": "http://localhost:8006",
 };
 
 export type ServiceName = keyof typeof SERVICE_URLS;
@@ -14,6 +18,7 @@ interface ApiResponse<T = any> {
   status: string;
   data?: T;
   error?: string;
+  [key: string]: any;
 }
 
 async function apiRequest<T>(
@@ -37,11 +42,21 @@ async function apiRequest<T>(
   }
 }
 
-export async function analyzeImage(service: string, imageFile: File | Blob): Promise<ApiResponse> {
+export async function analyzeImage(
+  service: string,
+  imageFile: File | Blob,
+  model?: string
+): Promise<ApiResponse> {
   const formData = new FormData();
   formData.append("file", imageFile, "image.jpg");
+  if (model) {
+    formData.append("model", model);
+    formData.append("model_choice", model);
+  }
 
-  return apiRequest(service, "/analyze-image", {
+  const endpoint = model ? `/analyze-image?model=${encodeURIComponent(model)}` : "/analyze-image";
+
+  return apiRequest(service, endpoint, {
     method: "POST",
     body: formData,
   });
@@ -49,14 +64,37 @@ export async function analyzeImage(service: string, imageFile: File | Blob): Pro
 
 export async function analyzeLiveSession(
   service: string,
-  frames: Blob[]
+  frames: Blob[],
+  model?: string
 ): Promise<ApiResponse> {
   const formData = new FormData();
   frames.forEach((frame, i) => {
     formData.append("frames", frame, `frame_${i}.jpg`);
   });
 
-  return apiRequest(service, "/analyze-live-session", {
+  const endpoint = model
+    ? `/analyze-live-session?model=${encodeURIComponent(model)}`
+    : "/analyze-live-session";
+
+  return apiRequest(service, endpoint, {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export async function compareSuspects(
+  evidence: File | Blob,
+  suspects: (File | Blob)[],
+  modelChoice: string = "both"
+): Promise<ApiResponse> {
+  const formData = new FormData();
+  formData.append("evidence", evidence, (evidence as File).name || "evidence.jpg");
+  suspects.forEach((f, i) => {
+    formData.append("suspects", f, (f as File).name || `suspect_${i}.jpg`);
+  });
+  formData.append("model_choice", modelChoice);
+
+  return apiRequest("face-condition-detection", "/compare", {
     method: "POST",
     body: formData,
   });
@@ -66,4 +104,4 @@ export async function getSession(service: string, sessionId: string): Promise<Ap
   return apiRequest(service, `/session/${sessionId}`);
 }
 
-export default { analyzeImage, analyzeLiveSession, getSession };
+export default { analyzeImage, analyzeLiveSession, compareSuspects, getSession };

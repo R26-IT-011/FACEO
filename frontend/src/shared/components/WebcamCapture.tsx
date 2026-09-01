@@ -106,7 +106,7 @@ export default function WebcamCapture({
           autoPlay
           muted
           playsInline
-          className="absolute inset-0 w-full h-full object-cover grayscale brightness-110 contrast-125 mix-blend-screen"
+          className="absolute inset-0 w-full h-full object-cover brightness-105 contrast-110"
         />
 
         {isCapturing && (

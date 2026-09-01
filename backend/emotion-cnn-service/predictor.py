@@ -1,72 +1,105 @@
 import os
 import torch
+import torch.nn as nn
 import cv2
 import numpy as np
 from PIL import Image
 from mtcnn import MTCNN
-from torchvision import transforms, models
+from torchvision import transforms
 from collections import Counter
-from torchvision.models.detection import (
-    ssdlite320_mobilenet_v3_large,
-    SSDLite320_MobileNet_V3_Large_Weights
-)
+
+
+class EmotionCNN(nn.Module):
+    """Custom VGG-like CNN with BatchNorm for Emotion Detection."""
+
+    def __init__(self, num_classes=5):
+        super(EmotionCNN, self).__init__()
+
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size=3, padding=1),   # 0
+            nn.BatchNorm2d(32),                            # 1
+            nn.ReLU(inplace=True),                         # 2
+            nn.MaxPool2d(2, 2),                            # 3
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),   # 4
+            nn.BatchNorm2d(64),                            # 5
+            nn.ReLU(inplace=True),                         # 6
+            nn.MaxPool2d(2, 2),                            # 7
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),  # 8
+            nn.BatchNorm2d(128),                           # 9
+            nn.ReLU(inplace=True),                         # 10
+            nn.MaxPool2d(2, 2),                            # 11
+            nn.Conv2d(128, 256, kernel_size=3, padding=1), # 12
+            nn.BatchNorm2d(256),                           # 13
+            nn.ReLU(inplace=True),                         # 14
+            nn.MaxPool2d(2, 2),                            # 15
+            nn.Conv2d(256, 256, kernel_size=3, padding=1), # 16
+            nn.BatchNorm2d(256),                           # 17
+            nn.ReLU(inplace=True),                         # 18
+            nn.MaxPool2d(2, 2),                            # 19
+        )
+
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+
+        self.classifier = nn.Sequential(
+            nn.Dropout(0.5),           # 0
+            nn.ReLU(inplace=True),     # 1
+            nn.Linear(256, 128),       # 2
+            nn.Dropout(0.5),           # 3
+            nn.ReLU(inplace=True),     # 4
+            nn.Linear(128, num_classes), # 5
+        )
+
+    def forward(self, x):
+        x = self.features(x)
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        x = self.classifier(x)
+        return x
+
 
 # Configuration & Model Loading
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-FINAL_MODEL_PATH = os.path.join(BASE_DIR, "model", "best_model.pth")
+FINAL_MODEL_PATH = os.path.join(BASE_DIR, "model", "face_emotion_cnn 110.pth")
+if not os.path.exists(FINAL_MODEL_PATH):
+    FINAL_MODEL_PATH = os.path.join(BASE_DIR, "face_emotion_cnn 110.pth")
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 if os.path.exists(FINAL_MODEL_PATH):
     checkpoint = torch.load(FINAL_MODEL_PATH, map_location=DEVICE, weights_only=False)
 
+    NUM_CLASSES = checkpoint.get("num_classes", 5)
     CLASS_NAMES = checkpoint.get("class_names", ["angry", "disgust", "fear", "happy", "neutral", "sad", "surprise"])
     IMG_SIZE = checkpoint.get("img_size", 224)
-    EMOTION_BACKBONE = checkpoint.get("emotion_backbone", "MobileNetV3-Large")
 
-    emotion_state = checkpoint["emotion_model"]
-    NUM_CLASSES = emotion_state["classifier.3.weight"].shape[0]
-    if len(CLASS_NAMES) < NUM_CLASSES:
-        while len(CLASS_NAMES) < NUM_CLASSES:
-            CLASS_NAMES.append(f"Emotion_{len(CLASS_NAMES)}")
+    norm_mean = checkpoint.get("normalization", {}).get("mean", [0.485, 0.456, 0.406])
+    norm_std = checkpoint.get("normalization", {}).get("std", [0.229, 0.224, 0.225])
 
-    if EMOTION_BACKBONE == "MobileNetV3-Large":
-        emotion_model = models.mobilenet_v3_large(weights=None)
-        in_features = emotion_model.classifier[-1].in_features
-        emotion_model.classifier[-1] = torch.nn.Linear(in_features, NUM_CLASSES)
-    else:
-        raise ValueError(f"Unsupported emotion backbone: {EMOTION_BACKBONE}")
-
-    emotion_model.load_state_dict(emotion_state)
-    emotion_model = emotion_model.to(DEVICE)
+    emotion_model = EmotionCNN(num_classes=NUM_CLASSES).to(DEVICE)
+    emotion_model.load_state_dict(checkpoint["model_state_dict"])
     emotion_model.eval()
     MODEL_LOADED = True
 else:
     print(f"[WARNING] Model file not found at {FINAL_MODEL_PATH}")
     MODEL_LOADED = False
-    CLASS_NAMES = ["angry", "happy", "sad", "neutral", "fear", "disgust", "surprise"]
+    CLASS_NAMES = ["angry", "disgust", "fear", "happy", "neutral", "sad", "surprise"]
     IMG_SIZE = 224
+    norm_mean = [0.485, 0.456, 0.406]
+    norm_std = [0.229, 0.224, 0.225]
 
-# Load MTCNN
+# Load MTCNN face detector
 mtcnn = MTCNN(device=str(DEVICE))
-
-# Load SSD MobileNetV3
-ssd_weights = SSDLite320_MobileNet_V3_Large_Weights.DEFAULT
-ssd_model = ssdlite320_mobilenet_v3_large(weights=ssd_weights)
-ssd_model = ssd_model.to(DEVICE).eval()
-ssd_preprocess = ssd_weights.transforms()
-ssd_categories = ssd_weights.meta["categories"]
 
 eval_tfms = transforms.Compose([
     transforms.Resize((IMG_SIZE, IMG_SIZE)),
     transforms.ToTensor(),
-    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+    transforms.Normalize(mean=norm_mean, std=norm_std),
 ])
 
 EMOTIONS = CLASS_NAMES
 
 
-def rotate_align_face(img_bgr, keypoints):
+def rotate_align_face(img_bgr: np.ndarray, keypoints: dict) -> np.ndarray:
     try:
         left_eye = np.array(keypoints["left_eye"], dtype=np.float32)
         right_eye = np.array(keypoints["right_eye"], dtype=np.float32)
@@ -82,11 +115,8 @@ def rotate_align_face(img_bgr, keypoints):
         return img_bgr
 
 
-def predict_emotions(img_bgr: np.ndarray, use_ssd: bool = True, ssd_score_threshold: float = 0.40) -> dict:
-    """
-    Predict emotion using PyTorch MobileNetV3-Large, MTCNN face alignment, and SSD MobileNetV3.
-    Matches exact model logic from test/app.py.
-    """
+def predict_emotions(img_bgr: np.ndarray) -> dict:
+    """Predict emotion using PyTorch EmotionCNN model with MTCNN face alignment."""
     if img_bgr is None or not MODEL_LOADED:
         return {
             "dominant": "neutral",
@@ -100,26 +130,7 @@ def predict_emotions(img_bgr: np.ndarray, use_ssd: bool = True, ssd_score_thresh
 
     rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
 
-    # Optional SSD stage: detect a person/object region.
-    ssd_box = None
-    if use_ssd:
-        pil = Image.fromarray(rgb)
-        x = ssd_preprocess(pil).to(DEVICE)
-        with torch.no_grad():
-            pred = ssd_model([x])[0]
-
-        candidates = []
-        for box, label, score in zip(pred["boxes"], pred["labels"], pred["scores"]):
-            if float(score) >= ssd_score_threshold:
-                name = ssd_categories[int(label)]
-                if name == "person":
-                    candidates.append((float(score), box.cpu().numpy()))
-
-        if candidates:
-            candidates.sort(reverse=True, key=lambda z: z[0])
-            ssd_box = candidates[0][1]
-
-    # MTCNN detects face + landmarks.
+    # MTCNN detects face + landmarks
     detections = mtcnn.detect_faces(rgb)
     if not detections:
         return {
@@ -129,11 +140,10 @@ def predict_emotions(img_bgr: np.ndarray, use_ssd: bool = True, ssd_score_thresh
             "trend": [0],
             "sessionType": "upload",
             "face_found": False,
-            "ssd_person_found": ssd_box is not None,
             "error": "No face detected"
         }
 
-    # Largest face
+    # Select largest face
     det = max(detections, key=lambda r: max(1, r["box"][2]) * max(1, r["box"][3]))
     x, y, w, h = det["box"]
     x, y = max(0, x), max(0, y)
@@ -152,10 +162,10 @@ def predict_emotions(img_bgr: np.ndarray, use_ssd: bool = True, ssd_score_thresh
     tensor = eval_tfms(face_pil).unsqueeze(0).to(DEVICE)
 
     with torch.no_grad():
-        probs = torch.softmax(emotion_model(tensor), dim=1)[0]
+        logits = emotion_model(tensor)
+        probs = torch.softmax(logits, dim=1)[0]
         idx = int(probs.argmax())
 
-    # Build emotion dictionary with scores (percentages 0-100)
     scores = {c: round(float(p) * 100, 1) for c, p in zip(CLASS_NAMES, probs)}
     dominant = CLASS_NAMES[idx]
     raw_confidence = float(probs[idx])
@@ -166,7 +176,6 @@ def predict_emotions(img_bgr: np.ndarray, use_ssd: bool = True, ssd_score_thresh
         "confidence": raw_confidence,
         "face_found": True,
         "face_confidence": raw_face_confidence,
-        "ssd_person_found": ssd_box is not None,
         "face_box": [int(x), int(y), int(x2), int(y2)],
         "landmarks": {k: [int(v) for v in pt] for k, pt in det["keypoints"].items()},
         "dominant": dominant,
@@ -216,4 +225,3 @@ def aggregate_emotion_session(frame_results: list[dict]) -> dict:
         "sessionType": "live",
         "duration": 120,
     }
-

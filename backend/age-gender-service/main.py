@@ -1,14 +1,14 @@
 import os
 import sys
 import uuid
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
 import cv2
 import numpy as np
 
 # Import predictor
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from predictor import predict_age_gender, aggregate_session
+from predictor import predict_age_gender, aggregate_session, MODEL_REGISTRY
 
 app = FastAPI(title="Faceo Analytics — Age & Gender Service")
 
@@ -25,21 +25,47 @@ sessions = {}
 
 @app.get("/")
 def health_check():
-    return {"status": "Age & Gender Service Active", "port": 8001}
+    return {
+        "status": "Age & Gender Service Active",
+        "port": 8001,
+        "supportedModels": list(MODEL_REGISTRY.keys()),
+    }
+
+
+@app.get("/models")
+def get_available_models():
+    return {
+        "status": "success",
+        "models": [
+            {
+                "id": k,
+                "name": v["name"],
+                "badge": v["badge"],
+                "description": v["description"],
+            }
+            for k, v in MODEL_REGISTRY.items()
+        ],
+    }
 
 
 @app.post("/analyze-image")
-async def analyze_image(file: UploadFile = File(...)):
+async def analyze_image(
+    file: UploadFile = File(...),
+    model: str = Query("fairface", description="Selected model architecture"),
+):
     contents = await file.read()
     nparr = np.frombuffer(contents, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-    result = predict_age_gender(img)
+    result = predict_age_gender(img, model_name=model)
     return {"status": "success", "data": result}
 
 
 @app.post("/analyze-live-session")
-async def analyze_live_session(frames: list[UploadFile] = File(...)):
+async def analyze_live_session(
+    frames: list[UploadFile] = File(...),
+    model: str = Query("fairface", description="Selected model architecture"),
+):
     session_id = str(uuid.uuid4())[:8]
     frame_results = []
 
@@ -48,9 +74,9 @@ async def analyze_live_session(frames: list[UploadFile] = File(...)):
         nparr = np.frombuffer(contents, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is not None:
-            frame_results.append(predict_age_gender(img))
+            frame_results.append(predict_age_gender(img, model_name=model))
 
-    aggregated = aggregate_session(frame_results)
+    aggregated = aggregate_session(frame_results, model_name=model)
     aggregated["sessionId"] = session_id
     sessions[session_id] = aggregated
 

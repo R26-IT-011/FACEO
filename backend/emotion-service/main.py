@@ -36,6 +36,34 @@ async def analyze_image(file: UploadFile = File(...)):
     return {"status": "success", "data": result}
 
 
+@app.post("/predict")
+async def predict(file: UploadFile = File(...)):
+    """Backward-compatible endpoint returning exact Flask app.py response structure."""
+    contents = await file.read()
+    nparr = np.frombuffer(contents, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+    result = predict_emotions(img)
+    if not result.get("face_found", False):
+        return {
+            "emotion": None,
+            "confidence": 0.0,
+            "face_found": False,
+            "ssd_person_found": result.get("ssd_person_found", False)
+        }
+
+    return {
+        "confidence": result["confidence"],
+        "emotion": result["emotion"],
+        "face_box": result["face_box"],
+        "face_confidence": result["face_confidence"],
+        "face_found": result["face_found"],
+        "landmarks": result["landmarks"],
+        "ssd_person_found": result["ssd_person_found"]
+    }
+
+
+
 @app.post("/analyze-live-session")
 async def analyze_live_session(frames: list[UploadFile] = File(...)):
     session_id = str(uuid.uuid4())[:8]
