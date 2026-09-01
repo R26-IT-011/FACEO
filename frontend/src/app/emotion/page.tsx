@@ -72,7 +72,7 @@ export default function EmotionSelectionPage() {
                     Emotion Recognition Part
                   </h2>
                   <p className="text-white/85 text-xs md:text-sm font-normal leading-relaxed max-w-md mb-5 drop-shadow">
-                    Multi-model detection engine (SSD MobileNetV3, CNN, YOLO) for accurate facial expression classification.
+                    Multi-model detection engine (SSD MobileNetV3, CNN) for accurate facial expression classification.
                   </p>
 
                   <div className="inline-flex items-center gap-2 text-xs md:text-sm font-semibold tracking-wide text-black bg-white group-hover:bg-cyan-300 px-5 py-2.5 rounded-full transition-all group-hover:gap-3 shadow-lg">
