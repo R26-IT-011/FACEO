@@ -38,6 +38,7 @@ interface AllInOneResult {
     }[];
     totalDetections: number;
     avgConfidence: number;
+    annotatedImage?: string;
   };
   sessionType: string;
   duration: number;
@@ -150,8 +151,9 @@ export default function AllInOneResultsPage() {
       >
         <Layers className="w-5 h-5 text-white/30" />
         <span className="text-xs uppercase tracking-[0.2em] text-white/40 font-mono">
-          Comprehensive Phased Analysis — {results.totalFrames} Frames
-          Processed
+          {results.sessionType === "upload"
+            ? "Unified Image Analysis — 1 Photo Evaluated"
+            : `Comprehensive Phased Analysis — ${results.totalFrames} Frames Processed`}
         </span>
       </motion.div>
 
@@ -167,7 +169,7 @@ export default function AllInOneResultsPage() {
           }`}
         />
         <h3 className="text-xs uppercase tracking-[0.2em] text-white/40 mb-6 flex items-center gap-2 font-bold">
-          <ShieldCheck className="w-4 h-4" /> Phase 1 — Media Authenticity
+          <ShieldCheck className="w-4 h-4" /> Media Authenticity Evaluation
         </h3>
         <div className="flex items-end gap-6 border-b border-white/5 pb-8 mb-6 relative z-10">
           <h2
@@ -188,7 +190,7 @@ export default function AllInOneResultsPage() {
         </div>
         <p className="text-white/50 text-sm leading-relaxed max-w-lg font-light relative z-10">
           {isReal
-            ? "The neural network analyzed the facial structures within the first 10 seconds and determined the subject is authentic. No synthetic GAN artifacts or deepfake distortions were detected."
+            ? "The neural network evaluated the facial structures and confirmed the subject is authentic. No synthetic GAN artifacts or deepfake distortions were detected."
             : "The analysis detected synthetic artifacts consistent with AI-generated or deepfake imagery. Further manual verification is recommended."}
         </p>
       </motion.div>
@@ -559,23 +561,37 @@ export default function AllInOneResultsPage() {
               Categories Found
             </p>
             <div className="flex flex-wrap gap-2 mt-2">
-              {results.faceMarks.detections.map((d) => (
+              {Array.from(new Set(results.faceMarks.detections.map((d) => d.label))).map((cat) => (
                 <span
-                  key={d.label}
+                  key={cat}
                   className="text-[10px] bg-white/5 border border-white/10 px-3 py-1 rounded-full text-white/50 uppercase tracking-widest"
                 >
-                  {d.label}
+                  {cat}
                 </span>
               ))}
             </div>
           </div>
         </div>
 
+        {results.faceMarks.annotatedImage && (
+          <div className="mb-8 p-4 rounded-xl border border-white/10 bg-white/[0.02] flex flex-col items-center">
+            <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 mb-3 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              YOLO Visual Bounding Box Analysis
+            </span>
+            <img
+              src={results.faceMarks.annotatedImage}
+              alt="YOLO Detected Facial Marks"
+              className="max-h-80 w-auto rounded-lg border border-white/10 object-contain shadow-2xl"
+            />
+          </div>
+        )}
+
         {results.faceMarks.detections.length > 0 ? (
           <div className="space-y-6">
             {results.faceMarks.detections.map((det, i) => (
               <div
-                key={i}
+                key={`mark-item-${det.label}-${i}`}
                 className="border border-white/5 bg-white/[0.02] rounded-xl p-5"
               >
                 <div className="flex items-center justify-between mb-3">
@@ -632,8 +648,12 @@ export default function AllInOneResultsPage() {
             <p className="text-[10px] uppercase tracking-widest text-white/30 mb-2">
               Session Duration
             </p>
-            <span className="text-3xl font-light">{results.duration}s</span>
-            <p className="text-[10px] text-white/20 mt-1">2-Phase Sequential</p>
+            <span className="text-3xl font-light">
+              {results.sessionType === "upload" ? "Instant" : `${results.duration}s`}
+            </span>
+            <p className="text-[10px] text-white/20 mt-1">
+              {results.sessionType === "upload" ? "Static Image Upload" : "2-Phase Sequential"}
+            </p>
           </div>
         </div>
       </motion.div>

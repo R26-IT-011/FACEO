@@ -96,6 +96,8 @@ def get_marks(image_bytes: bytes, model_choice: str = "both"):
                 "confidence": float(box.conf[0]),
                 "x": coords[0],
                 "y": coords[1],
+                "w": coords[2] if len(coords) > 2 else 0.05,
+                "h": coords[3] if len(coords) > 3 else 0.05,
                 "source_model": "YOLOv8",
             })
 
@@ -110,6 +112,8 @@ def get_marks(image_bytes: bytes, model_choice: str = "both"):
                 "confidence": float(box.conf[0]),
                 "x": coords[0],
                 "y": coords[1],
+                "w": coords[2] if len(coords) > 2 else 0.05,
+                "h": coords[3] if len(coords) > 3 else 0.05,
                 "source_model": "YOLOv11",
             })
 

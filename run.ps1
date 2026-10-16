@@ -23,7 +23,7 @@ if (-not (Test-Path $VenvActivate)) {
 $InstallDeps = Read-Host "Do you want to install/update Python and Node dependencies? (y/N)"
 if ($InstallDeps -eq "y" -or $InstallDeps -eq "Y") {
     Write-Host "`n[+] Installing python dependencies..." -ForegroundColor Cyan
-    & cmd /c "cd /d `"$BackendDir`" && venv\Scripts\activate.bat && pip install fastapi uvicorn python-multipart opencv-python-headless numpy"
+    & cmd /c "cd /d `"$BackendDir`" && venv\Scripts\activate.bat && pip install fastapi uvicorn python-multipart opencv-python-headless numpy flask flask-cors ultralytics"
     
     Write-Host "`n[+] Installing frontend dependencies..." -ForegroundColor Cyan
     & cmd /c "cd /d `"$FrontendDir`" && npm install"

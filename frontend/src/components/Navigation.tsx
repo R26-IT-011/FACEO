@@ -17,7 +17,7 @@ export default function Navigation() {
         { name: "Age & Gender", path: "/age-gender" },
         { name: "Face Marks", path: "/face-marks" },
         { name: "Deepfake", path: "/deepfake" },
-        // { name: "All-in-One", path: "/all-in-one" },
+        { name: "All-in-One", path: "/all-in-one" },
         { name: "Vision & Mission", path: "/vision-mission" },
         { name: "Team", path: "/team" },
     ];
