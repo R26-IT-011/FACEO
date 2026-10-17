@@ -60,7 +60,8 @@ export default function AnalysisPage() {
             formData.append("file", blob, "frame.jpg");
 
             try {
-                const res = await fetch("http://localhost:8000/api/analyze-frame", {
+                const apiBase = process.env.NEXT_PUBLIC_MAIN_API_URL || "http://localhost:8000";
+                const res = await fetch(`${apiBase}/api/analyze-frame`, {
                     method: "POST",
                     body: formData,
                 });

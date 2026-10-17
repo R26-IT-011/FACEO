@@ -1,0 +1,61 @@
+version: "3.9"
+
+services:
+  main-api:
+    build:
+      context: ./backend/api
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - DEEPFAKE_SERVICE_URL=http://deepfake-service:8004
+    depends_on:
+      - deepfake-service
+
+  age-gender-service:
+    build:
+      context: ./backend/age-gender-service
+    ports:
+      - "8001:8001"
+    environment:
+      - PORT=8001
+
+  emotion-service:
+    build:
+      context: ./backend/emotion-service
+    ports:
+      - "8002:8002"
+    environment:
+      - PORT=8002
+
+  face-condition-service:
+    build:
+      context: ./backend/face-condition-detection-service
+    ports:
+      - "8003:8003"
+    environment:
+      - PORT=8003
+
+  deepfake-service:
+    build:
+      context: ./backend/deepfake-service
+    ports:
+      - "8004:8004"
+    environment:
+      - PORT=8004
+
+  emotion-cnn-service:
+    build:
+      context: ./backend/emotion-cnn-service
+    ports:
+      - "8005:8005"
+    environment:
+      - PORT=8005
+
+  low-light-service:
+    build:
+      context: ./backend/low-light-service
+    ports:
+      - "8006:8006"
+    environment:
+      - PORT=8006

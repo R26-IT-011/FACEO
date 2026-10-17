@@ -1,8 +1,9 @@
 import os
 import sys
 
-# Ensure backend module is importable from root
+# Ensure backend module is importable from root or standalone
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,7 +38,8 @@ async def analyze_frame(file: UploadFile = File(...)):
     
     # Execute Module 3 (Deepfake Service via HTTP)
     try:
-        df_res = requests.post("http://localhost:8004/analyze-image", files={"file": ("frame.jpg", contents, "image/jpeg")})
+        deepfake_url = os.environ.get("DEEPFAKE_SERVICE_URL", "http://localhost:8004")
+        df_res = requests.post(f"{deepfake_url}/analyze-image", files={"file": ("frame.jpg", contents, "image/jpeg")})
         if df_res.status_code == 200:
             authenticity_data = df_res.json().get("data", {})
         else:
@@ -54,4 +56,5 @@ async def analyze_frame(file: UploadFile = File(...)):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)

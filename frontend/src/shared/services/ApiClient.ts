@@ -2,14 +2,15 @@
 // Each backend service runs on its own port
 
 const SERVICE_URLS: Record<string, string> = {
-  "age-gender": "http://localhost:8001",
-  "emotion": "http://localhost:8002",
-  "emotion-cnn": "http://localhost:8005",
-  "face-condition-detection": "http://localhost:8003",
-  "face-condition": "http://localhost:8003",
-  "bruise-detection": "http://localhost:8003",
-  "deepfake": "http://localhost:8004",
-  "low-light": "http://localhost:8006",
+  "age-gender": process.env.NEXT_PUBLIC_AGE_GENDER_SERVICE_URL || "http://localhost:8001",
+  "emotion": process.env.NEXT_PUBLIC_EMOTION_SERVICE_URL || "http://localhost:8002",
+  "emotion-cnn": process.env.NEXT_PUBLIC_EMOTION_CNN_SERVICE_URL || "http://localhost:8005",
+  "face-condition-detection": process.env.NEXT_PUBLIC_FACE_MARKS_SERVICE_URL || "http://localhost:8003",
+  "face-condition": process.env.NEXT_PUBLIC_FACE_MARKS_SERVICE_URL || "http://localhost:8003",
+  "bruise-detection": process.env.NEXT_PUBLIC_FACE_MARKS_SERVICE_URL || "http://localhost:8003",
+  "deepfake": process.env.NEXT_PUBLIC_DEEPFAKE_SERVICE_URL || "http://localhost:8004",
+  "low-light": process.env.NEXT_PUBLIC_LOW_LIGHT_SERVICE_URL || "http://localhost:8006",
+  "main-api": process.env.NEXT_PUBLIC_MAIN_API_URL || "http://localhost:8000",
 };
 
 export type ServiceName = keyof typeof SERVICE_URLS;

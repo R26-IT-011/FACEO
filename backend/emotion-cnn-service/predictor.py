@@ -4,9 +4,11 @@ import torch.nn as nn
 import cv2
 import numpy as np
 from PIL import Image
-from mtcnn import MTCNN
 from torchvision import transforms
 from collections import Counter
+
+
+
 
 
 class EmotionCNN(nn.Module):
@@ -87,8 +89,24 @@ else:
     norm_mean = [0.485, 0.456, 0.406]
     norm_std = [0.229, 0.224, 0.225]
 
-# Load MTCNN face detector
-mtcnn = MTCNN(device=str(DEVICE))
+# Lazy-loaded MTCNN face detector to prevent high startup memory and timeouts
+_mtcnn = None
+
+def get_mtcnn():
+    global _mtcnn
+    if _mtcnn is not None:
+        return _mtcnn
+    try:
+        from mtcnn import MTCNN
+        _mtcnn = MTCNN(device=str(DEVICE))
+        print("[INFO] MTCNN face detector loaded successfully.")
+    except Exception as e:
+        print(f"[WARNING] MTCNN init failed: {e}. Haar Cascade fallback active.")
+        _mtcnn = None
+    return _mtcnn
+
+
+
 
 eval_tfms = transforms.Compose([
     transforms.Resize((IMG_SIZE, IMG_SIZE)),
@@ -130,8 +148,39 @@ def predict_emotions(img_bgr: np.ndarray) -> dict:
 
     rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
 
-    # MTCNN detects face + landmarks
-    detections = mtcnn.detect_faces(rgb)
+    # Face detection: Try MTCNN first, fallback to OpenCV Haar Cascade
+    detections = []
+    detector = get_mtcnn()
+    if detector is not None:
+        try:
+            detections = detector.detect_faces(rgb)
+        except Exception as e:
+            print(f"[WARNING] MTCNN face detection error: {e}")
+            detections = []
+
+
+    if not detections:
+        try:
+            gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+            face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(30, 30))
+            if len(faces) > 0:
+                fx, fy, fw, fh = max(faces, key=lambda f: f[2] * f[3])
+                detections = [{
+                    "box": [int(fx), int(fy), int(fw), int(fh)],
+                    "confidence": 0.85,
+                    "keypoints": {
+                        "left_eye": [int(fx + fw * 0.3), int(fy + fh * 0.35)],
+                        "right_eye": [int(fx + fw * 0.7), int(fy + fh * 0.35)],
+                        "nose": [int(fx + fw * 0.5), int(fy + fh * 0.55)],
+                        "mouth_left": [int(fx + fw * 0.35), int(fy + fh * 0.75)],
+                        "mouth_right": [int(fx + fw * 0.65), int(fy + fh * 0.75)],
+                    }
+                }]
+        except Exception as e:
+            print(f"[WARNING] Haar Cascade fallback error: {e}")
+            detections = []
+
     if not detections:
         return {
             "dominant": "neutral",
@@ -142,6 +191,7 @@ def predict_emotions(img_bgr: np.ndarray) -> dict:
             "face_found": False,
             "error": "No face detected"
         }
+
 
     # Select largest face
     det = max(detections, key=lambda r: max(1, r["box"][2]) * max(1, r["box"][3]))

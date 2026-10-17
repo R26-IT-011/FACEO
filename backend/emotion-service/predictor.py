@@ -3,13 +3,16 @@ import torch
 import cv2
 import numpy as np
 from PIL import Image
-from mtcnn import MTCNN
 from torchvision import transforms, models
 from collections import Counter
 from torchvision.models.detection import (
     ssdlite320_mobilenet_v3_large,
     SSDLite320_MobileNet_V3_Large_Weights
 )
+
+
+
+
 
 # Configuration & Model Loading
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -47,15 +50,38 @@ else:
     CLASS_NAMES = ["angry", "happy", "sad", "neutral", "fear", "disgust", "surprise"]
     IMG_SIZE = 224
 
-# Load MTCNN
-mtcnn = MTCNN(device=str(DEVICE))
+# Lazy-loaded MTCNN face detector to prevent high startup memory and timeouts
+_mtcnn = None
 
-# Load SSD MobileNetV3
-ssd_weights = SSDLite320_MobileNet_V3_Large_Weights.DEFAULT
-ssd_model = ssdlite320_mobilenet_v3_large(weights=ssd_weights)
-ssd_model = ssd_model.to(DEVICE).eval()
-ssd_preprocess = ssd_weights.transforms()
-ssd_categories = ssd_weights.meta["categories"]
+def get_mtcnn():
+    global _mtcnn
+    if _mtcnn is not None:
+        return _mtcnn
+    try:
+        from mtcnn import MTCNN
+        _mtcnn = MTCNN(device=str(DEVICE))
+        print("[INFO] MTCNN face detector loaded successfully.")
+    except Exception as e:
+        print(f"[WARNING] MTCNN init failed: {e}. Haar Cascade fallback active.")
+        _mtcnn = None
+    return _mtcnn
+
+
+# Load SSD MobileNetV3 safely
+ssd_model = None
+ssd_preprocess = None
+ssd_categories = []
+try:
+    ssd_weights = SSDLite320_MobileNet_V3_Large_Weights.DEFAULT
+    ssd_model = ssdlite320_mobilenet_v3_large(weights=ssd_weights)
+    ssd_model = ssd_model.to(DEVICE).eval()
+    ssd_preprocess = ssd_weights.transforms()
+    ssd_categories = ssd_weights.meta["categories"]
+    SSD_LOADED = True
+except Exception as e:
+    print(f"[WARNING] SSD MobileNet failed to load: {e}")
+    SSD_LOADED = False
+
 
 eval_tfms = transforms.Compose([
     transforms.Resize((IMG_SIZE, IMG_SIZE)),
@@ -102,25 +128,60 @@ def predict_emotions(img_bgr: np.ndarray, use_ssd: bool = True, ssd_score_thresh
 
     # Optional SSD stage: detect a person/object region.
     ssd_box = None
-    if use_ssd:
-        pil = Image.fromarray(rgb)
-        x = ssd_preprocess(pil).to(DEVICE)
-        with torch.no_grad():
-            pred = ssd_model([x])[0]
+    if use_ssd and SSD_LOADED and ssd_model is not None:
+        try:
+            pil = Image.fromarray(rgb)
+            x = ssd_preprocess(pil).to(DEVICE)
+            with torch.no_grad():
+                pred = ssd_model([x])[0]
 
-        candidates = []
-        for box, label, score in zip(pred["boxes"], pred["labels"], pred["scores"]):
-            if float(score) >= ssd_score_threshold:
-                name = ssd_categories[int(label)]
-                if name == "person":
-                    candidates.append((float(score), box.cpu().numpy()))
+            candidates = []
+            for box, label, score in zip(pred["boxes"], pred["labels"], pred["scores"]):
+                if float(score) >= ssd_score_threshold:
+                    name = ssd_categories[int(label)]
+                    if name == "person":
+                        candidates.append((float(score), box.cpu().numpy()))
 
-        if candidates:
-            candidates.sort(reverse=True, key=lambda z: z[0])
-            ssd_box = candidates[0][1]
+            if candidates:
+                candidates.sort(reverse=True, key=lambda z: z[0])
+                ssd_box = candidates[0][1]
+        except Exception as e:
+            print(f"[WARNING] SSD inference error: {e}")
+            ssd_box = None
 
-    # MTCNN detects face + landmarks.
-    detections = mtcnn.detect_faces(rgb)
+    # Face detection: Try MTCNN first, fallback to OpenCV Haar Cascade
+    detections = []
+    detector = get_mtcnn()
+    if detector is not None:
+        try:
+            detections = detector.detect_faces(rgb)
+        except Exception as e:
+            print(f"[WARNING] MTCNN face detection error: {e}")
+            detections = []
+
+
+    if not detections:
+        try:
+            gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+            face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(30, 30))
+            if len(faces) > 0:
+                fx, fy, fw, fh = max(faces, key=lambda f: f[2] * f[3])
+                detections = [{
+                    "box": [int(fx), int(fy), int(fw), int(fh)],
+                    "confidence": 0.85,
+                    "keypoints": {
+                        "left_eye": [int(fx + fw * 0.3), int(fy + fh * 0.35)],
+                        "right_eye": [int(fx + fw * 0.7), int(fy + fh * 0.35)],
+                        "nose": [int(fx + fw * 0.5), int(fy + fh * 0.55)],
+                        "mouth_left": [int(fx + fw * 0.35), int(fy + fh * 0.75)],
+                        "mouth_right": [int(fx + fw * 0.65), int(fy + fh * 0.75)],
+                    }
+                }]
+        except Exception as e:
+            print(f"[WARNING] Haar Cascade fallback error: {e}")
+            detections = []
+
     if not detections:
         return {
             "dominant": "neutral",
@@ -132,6 +193,7 @@ def predict_emotions(img_bgr: np.ndarray, use_ssd: bool = True, ssd_score_thresh
             "ssd_person_found": ssd_box is not None,
             "error": "No face detected"
         }
+
 
     # Largest face
     det = max(detections, key=lambda r: max(1, r["box"][2]) * max(1, r["box"][3]))

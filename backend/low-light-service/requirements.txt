@@ -4,4 +4,4 @@ python-multipart
 tensorflow
 numpy
 Pillow
-opencv-contrib-python>=4.8,<5.0
+opencv-contrib-python-headless>=4.8,<5.0
