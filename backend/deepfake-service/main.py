@@ -26,18 +26,16 @@ MODEL_PATHS = {
     "cnn": "ruchiraRTG/cnn_model_final_pro"
 }
 
-print("Loading models... This might take a minute...")
 processors = {}
 models = {}
 
-for name, path in MODEL_PATHS.items():
-    try:
-        print(f"Loading {name.upper()} model...")
-        processors[name] = AutoImageProcessor.from_pretrained(path)
-        models[name] = AutoModelForImageClassification.from_pretrained(path)
-    except Exception as e:
-        print(f"Warning: Failed to load {name.upper()} model: {e}")
-print("✅ Models Loading Process Finished!")
+def get_model(model_type: str):
+    if model_type not in models:
+        path = MODEL_PATHS.get(model_type, MODEL_PATHS["swin"])
+        print(f"Loading {model_type.upper()} model on-demand from {path}...")
+        processors[model_type] = AutoImageProcessor.from_pretrained(path)
+        models[model_type] = AutoModelForImageClassification.from_pretrained(path)
+    return processors[model_type], models[model_type]
 
 # Loading OpenCV Face Detector
 # The original code expected the haarcascade file locally. We use cv2's built in one.
@@ -49,15 +47,11 @@ def process_image(pil_image: Image.Image, model_type: str = "swin"):
         model_type = "swin"
 
     # Fallback just in case a wrong model name comes
-    if model_type not in models:
+    if model_type not in MODEL_PATHS:
         model_type = "swin"
 
-    # In case loading failed completely, raise an error
-    if model_type not in models:
-        raise ValueError(f"Model '{model_type}' is not loaded or unavailable.")
+    current_processor, current_model = get_model(model_type)
 
-    current_processor = processors[model_type]
-    current_model = models[model_type]
 
     # --- STEP A: Convert PIL to OpenCV format (BGR) ---
     opencv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
