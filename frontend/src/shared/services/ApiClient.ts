@@ -2,15 +2,15 @@
 // Each backend service runs on its own port
 
 const SERVICE_URLS: Record<string, string> = {
-  "age-gender": process.env.NEXT_PUBLIC_AGE_GENDER_SERVICE_URL || "http://localhost:8001",
-  "emotion": process.env.NEXT_PUBLIC_EMOTION_SERVICE_URL || "http://localhost:8002",
-  "emotion-cnn": process.env.NEXT_PUBLIC_EMOTION_CNN_SERVICE_URL || "http://localhost:8005",
-  "face-condition-detection": process.env.NEXT_PUBLIC_FACE_MARKS_SERVICE_URL || "http://localhost:8003",
-  "face-condition": process.env.NEXT_PUBLIC_FACE_MARKS_SERVICE_URL || "http://localhost:8003",
-  "bruise-detection": process.env.NEXT_PUBLIC_FACE_MARKS_SERVICE_URL || "http://localhost:8003",
-  "deepfake": process.env.NEXT_PUBLIC_DEEPFAKE_SERVICE_URL || "http://localhost:8004",
-  "low-light": process.env.NEXT_PUBLIC_LOW_LIGHT_SERVICE_URL || "http://localhost:8006",
-  "main-api": process.env.NEXT_PUBLIC_MAIN_API_URL || "http://localhost:8000",
+  "age-gender": process.env.NEXT_PUBLIC_AGE_GENDER_SERVICE_URL || "http://127.0.0.1:8001",
+  "emotion": process.env.NEXT_PUBLIC_EMOTION_SERVICE_URL || "http://127.0.0.1:8002",
+  "emotion-cnn": process.env.NEXT_PUBLIC_EMOTION_CNN_SERVICE_URL || "http://127.0.0.1:8005",
+  "face-condition-detection": process.env.NEXT_PUBLIC_FACE_MARKS_SERVICE_URL || "http://127.0.0.1:8003",
+  "face-condition": process.env.NEXT_PUBLIC_FACE_MARKS_SERVICE_URL || "http://127.0.0.1:8003",
+  "bruise-detection": process.env.NEXT_PUBLIC_FACE_MARKS_SERVICE_URL || "http://127.0.0.1:8003",
+  "deepfake": process.env.NEXT_PUBLIC_DEEPFAKE_SERVICE_URL || "http://127.0.0.1:8004",
+  "low-light": process.env.NEXT_PUBLIC_LOW_LIGHT_SERVICE_URL || "http://127.0.0.1:8006",
+  "main-api": process.env.NEXT_PUBLIC_MAIN_API_URL || "http://127.0.0.1:8000",
 };
 
 export type ServiceName = keyof typeof SERVICE_URLS;
@@ -30,16 +30,45 @@ async function apiRequest<T>(
   const baseUrl = SERVICE_URLS[service];
   if (!baseUrl) throw new Error(`Unknown service: ${service}`);
 
-  try {
-    const res = await fetch(`${baseUrl}${endpoint}`, {
+  const makeCall = async (url: string) => {
+    const res = await fetch(`${url}${endpoint}`, {
       ...options,
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(35000),
     });
+    if (!res.ok) {
+      let errMsg = `Server returned status ${res.status}`;
+      try {
+        const errJson = await res.json();
+        errMsg = errJson.detail || errJson.error || errMsg;
+      } catch {
+        // ignore
+      }
+      return { status: "error", error: errMsg };
+    }
     const json = await res.json();
     return json;
-  } catch (error) {
-    console.error(`[ApiClient] ${service}${endpoint} failed:`, error);
-    return { status: "error", error: "Service unavailable. Please ensure the backend is running." };
+  };
+
+  try {
+    return await makeCall(baseUrl);
+  } catch (error: any) {
+    // If connection failed, attempt alternate loopback (127.0.0.1 <-> localhost)
+    const alternateUrl = baseUrl.includes("localhost")
+      ? baseUrl.replace("localhost", "127.0.0.1")
+      : baseUrl.includes("127.0.0.1")
+      ? baseUrl.replace("127.0.0.1", "localhost")
+      : null;
+
+    if (alternateUrl) {
+      try {
+        return await makeCall(alternateUrl);
+      } catch {
+        // ignore alternate fallback error
+      }
+    }
+
+    console.warn(`[ApiClient] ${service} (${baseUrl}${endpoint}) unavailable:`, error?.message || error);
+    return { status: "error", error: `Service '${service}' is unavailable. Please ensure the backend microservice is running.` };
   }
 }
 

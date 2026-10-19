@@ -6,7 +6,8 @@ import { Users, Code, Cpu, Globe } from "lucide-react";
 
 const teamMembers = [
   {
-    name: "Damidu",
+    name: "D.M.D.N. Dissanayake",
+    displayName: "Damindu",
     role: "Emotion Recognition (Multi-Model Evaluation)",
     focus: "Multi-model facial emotion classification evaluating SSD MobileNetV3, CNN Deep Feature Extractor, and YOLO architectures.",
     technologies: [
@@ -20,10 +21,12 @@ const teamMembers = [
       "AffectNet",
       "RAF-DB",
     ],
+    image: "/team/damindu.jpg",
     initial: "D",
   },
   {
-    name: "Gagana",
+    name: "H.K.G.Y. Perera",
+    displayName: "Gagana",
     role: "Age & Gender Detection (Multi-Model Architecture)",
     focus: "Multi-model demographic intelligence with FairFace, DeepFace Ensemble, UTKFace ResNet-50, and SSR-Net.",
     technologies: [
@@ -37,10 +40,12 @@ const teamMembers = [
       "IMDB-WIKI",
       "Adience",
     ],
+    image: "/team/gagana.jpg",
     initial: "G",
   },
   {
-    name: "Sanjana",
+    name: "V.W.S. Deshan",
+    displayName: "Sanjana",
     role: "Facial Marks & Bruises Detection (YOLO Architectures)",
     focus: "Detection and bounding-box localization of scars, bruises, and moles using YOLOv8 and YOLOv11 vision models.",
     technologies: [
@@ -54,10 +59,12 @@ const teamMembers = [
       "ACNE04",
       "Roboflow",
     ],
+    image: "/team/sanjana.jpg",
     initial: "S",
   },
   {
-    name: "Ruchira",
+    name: "W.M.R.T. Gunawardhana",
+    displayName: "Ruchira",
     role: "Deepfake Authenticity Detection (Transformer & CNN)",
     focus: "Multi-spectral media authenticity verification using SwinBase Vision Transformer, CNN artifact classifiers, and ELA/FFT analysis.",
     technologies: [
@@ -71,6 +78,7 @@ const teamMembers = [
       "FaceForensics++",
       "DFDC",
     ],
+    image: "/team/ruchira.jpg",
     initial: "R",
   },
 ];
@@ -156,13 +164,28 @@ export default function TeamPage() {
                 className="glass-card p-6 group hover:bg-white/[0.07] transition-all duration-500"
               >
                 <div className="flex items-start gap-5">
-                  {/* Avatar */}
-                  <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center shrink-0 group-hover:bg-white/10 transition-colors">
-                    <span className="text-lg font-light text-white/50">{member.initial}</span>
+                  {/* Avatar Photo */}
+                  <div className="w-16 h-16 rounded-2xl overflow-hidden border border-white/10 shrink-0 group-hover:border-white/20 transition-colors">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={member.image}
+                      alt={member.displayName}
+                      className="w-full h-full object-cover object-top"
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        target.style.display = "none";
+                        const parent = target.parentElement;
+                        if (parent) {
+                          parent.classList.add("bg-white/5", "flex", "items-center", "justify-center");
+                          parent.innerHTML = `<span class="text-lg font-light text-white/50">${member.initial}</span>`;
+                        }
+                      }}
+                    />
                   </div>
-                  <div className="flex-1">
-                    <h4 className="text-lg font-light text-white/90 mb-1">{member.name}</h4>
-                    <p className="text-xs uppercase tracking-widest text-white/40 mb-3">{member.role}</p>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-base font-medium text-white/90 mb-0.5 tracking-tight">{member.name}</h4>
+                    <p className="text-xs text-white/35 mb-1 font-light">{member.displayName}</p>
+                    <p className="text-[10px] uppercase tracking-widest text-white/40 mb-3">{member.role}</p>
                     <p className="text-sm text-white/50 font-light leading-relaxed mb-4">{member.focus}</p>
                     <div className="flex flex-wrap gap-1.5">
                       {member.technologies.map((tech) => (

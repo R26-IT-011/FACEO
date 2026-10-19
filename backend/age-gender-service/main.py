@@ -8,7 +8,7 @@ import numpy as np
 
 # Import predictor
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from predictor import predict_age_gender, aggregate_session, MODEL_REGISTRY
+from predictor import predict_age_gender, predict_all_faces, aggregate_session, MODEL_REGISTRY
 
 app = FastAPI(title="Faceo Analytics — Age & Gender Service")
 
@@ -57,7 +57,9 @@ async def analyze_image(
     nparr = np.frombuffer(contents, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-    result = predict_age_gender(img, model_name=model)
+    # predict_all_faces returns every detected person with bounding boxes
+    # PLUS backward-compatible primary-face fields (age, gender, genderConfidence, ...).
+    result = predict_all_faces(img, model_name=model)
     return {"status": "success", "data": result}
 
 
@@ -93,4 +95,4 @@ def get_session(session_id: str):
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8001))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)

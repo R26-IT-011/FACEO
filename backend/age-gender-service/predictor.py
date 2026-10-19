@@ -9,11 +9,17 @@ InsightFace (buffalo_l model) is used instead of DeepFace because:
   - ONNX runtime: 100–300ms vs 2–5s for TensorFlow initialisation
 """
 import os
+import sys
 import time
 import threading
 import numpy as np
 
-# ── InsightFace (primary engine) ─────────────────────────────────────────────
+# Ensure local virtual environment packages are discoverable even if run from system python
+_venv_site = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "venv", "Lib", "site-packages"))
+if os.path.exists(_venv_site) and _venv_site not in sys.path:
+    sys.path.insert(0, _venv_site)
+
+# -- InsightFace (primary engine) ---------------------------------------------
 try:
     import insightface
     from insightface.app import FaceAnalysis
@@ -28,6 +34,57 @@ try:
     CV2_AVAILABLE = True
 except ImportError:
     CV2_AVAILABLE = False
+
+
+def _correct_white_balance(img_bgr: np.ndarray) -> np.ndarray:
+    """
+    Gray-world white balance correction.
+
+    Equalizes the per-channel mean to 128 so extreme colored lighting
+    (blue LED offices, warm tungsten, cyan glass reflections, etc.) does NOT
+    distort the InsightFace genderage network's skin-tone features.
+
+    Only applied when the image is significantly color-biased
+    (max channel mean / min channel mean > 1.25).
+    In neutral lighting this is a near-no-op.
+    """
+    means = [float(np.mean(img_bgr[:, :, c])) for c in range(3)]  # B, G, R
+    max_m, min_m = max(means), min(means)
+
+    # Skip correction if the image is already well-balanced
+    if min_m == 0 or (max_m / min_m) <= 1.25:
+        return img_bgr
+
+    result = img_bgr.copy().astype(np.float32)
+    for c in range(3):
+        if means[c] > 0:
+            result[:, :, c] *= 128.0 / means[c]
+    corrected = np.clip(result, 0, 255).astype(np.uint8)
+    print(f"[WB] channel means B={means[0]:.1f} G={means[1]:.1f} R={means[2]:.1f} "
+          f"ratio={max_m/min_m:.2f} -> correction applied")
+    return corrected
+
+
+def _select_primary_face(faces, img_w: int):
+    """
+    Pick the most relevant face: largest area that is also reasonably centered.
+    A pure largest-face pick can grab a background figure if the subject
+    is positioned off-center. We weight area by a center-proximity bonus.
+    """
+    cx = img_w / 2.0
+    best, best_score = None, -1.0
+    for f in faces:
+        x1, y1, x2, y2 = f.bbox
+        area   = max(0, (x2 - x1)) * max(0, (y2 - y1))
+        face_cx = (x1 + x2) / 2.0
+        # Penalty: how far the face centre is from the image horizontal centre
+        # (normalised 0-1, where 0 = perfect centre)
+        h_offset = abs(face_cx - cx) / max(cx, 1)
+        score    = area * (1.0 - 0.35 * h_offset)   # 35% weight to centrality
+        if score > best_score:
+            best_score = score
+            best = f
+    return best
 
 # ── Global model singleton — loaded once, reused across requests ─────────────
 _face_app: "FaceAnalysis | None" = None
@@ -70,7 +127,7 @@ def _get_face_app() -> "FaceAnalysis | None":
 MODEL_REGISTRY = {
     "fairface": {
         "name": "FairFace Model",
-        "badge": "Default • Diverse",
+        "badge": "Default - Diverse",
         "description": "InsightFace buffalo_l with South Asian demographic calibration.",
         "variance": 2,
     },
@@ -155,40 +212,74 @@ def predict_age_gender(image: np.ndarray, model_name: str = "fairface") -> dict:
             if image.dtype != np.uint8:
                 image = np.clip(image, 0, 255).astype(np.uint8)
 
-            faces = app.get(image)
+            img_h, img_w = image.shape[:2]
 
-            if faces and len(faces) > 0:
-                # Pick the largest face (most prominent, most reliable)
-                face = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
+            # ── Pass 1: inference on original image ───────────────────────────
+            faces_orig = app.get(image)
 
-                raw_age     = float(face.age)
-                # InsightFace gender: 0 = Female, 1 = Male
-                gender_code = int(face.gender)
+            # ── Pass 2: white-balance corrected image ─────────────────────────
+            # Fixes gender errors caused by extreme colored lighting
+            # (blue LED offices, cyan glass, warm tungsten, etc.).
+            wb_image   = _correct_white_balance(image)
+            faces_wb   = app.get(wb_image) if wb_image is not image else faces_orig
+
+            # Merge candidate face lists — prefer WB faces when available
+            # (WB usually produces cleaner attribute estimates under odd lighting)
+            faces_all  = faces_wb if (faces_wb and len(faces_wb) > 0) else faces_orig
+
+            if faces_all and len(faces_all) > 0:
+                # ── Select primary face: size + horizontal centrality ─────────
+                face = _select_primary_face(faces_all, img_w)
+
+                raw_age = float(face.age)
+
+                # ── Gender ensemble: average score from both image versions ───
+                # InsightFace buffalo_l genderage.onnx outputs a continuous score
+                # (0.0 = strongly Female, 1.0 = strongly Male).
+                # Averaging over original + WB passes makes the prediction robust
+                # to color-cast lighting that biases a single-pass result.
+                score_wb   = float(getattr(face, "gender", 0.5))
+
+                # Get the corresponding face from the original pass (if available)
+                # so we can ensemble the two independent scores.
+                score_orig = score_wb  # default: same face used
+                if faces_orig and len(faces_orig) > 0:
+                    face_orig  = _select_primary_face(faces_orig, img_w)
+                    score_orig = float(getattr(face_orig, "gender", 0.5))
+                    raw_age    = (float(face_orig.age) + float(face.age)) / 2.0  # average age too
+
+                # Ensemble: weighted average (60% WB, 40% original)
+                raw_gender_score = 0.60 * score_wb + 0.40 * score_orig
+
+                gender_code = int(round(raw_gender_score))   # 0 = Female, 1 = Male
                 gender      = "male" if gender_code == 1 else "female"
 
-                # InsightFace doesn't expose gender confidence directly.
-                # We estimate it from face detection score and attribute consistency.
-                det_score   = float(getattr(face, "det_score", 0.9))
-                # Heuristic: high-confidence face detections → high gender confidence
-                gender_conf = int(min(99, max(75, det_score * 100 + 3)))
+                # True confidence = distance from 0.5 decision boundary → scaled 50–99
+                gender_dist       = abs(raw_gender_score - 0.5)
+                gender_conf       = int(min(99, 50 + gender_dist * 98))
+                occlusion_warning = gender_conf < 72
 
-                age         = _apply_minor_calibration(raw_age, model_key)
-                t_ms        = int((time.monotonic() - t_start) * 1000)
+                det_score = float(getattr(face, "det_score", 0.9))
+                age       = _apply_minor_calibration(raw_age, model_key)
+                t_ms      = int((time.monotonic() - t_start) * 1000)
 
                 print(
                     f"[InsightFace] model={model_key} raw_age={raw_age:.1f} "
                     f"calibrated={age} gender={gender}({gender_conf}%) "
-                    f"det_score={det_score:.3f} faces_found={len(faces)} time={t_ms}ms"
+                    f"score_orig={score_orig:.3f} score_wb={score_wb:.3f} ensemble={raw_gender_score:.3f} "
+                    f"det_score={det_score:.3f} faces_found={len(faces_all)} time={t_ms}ms"
                 )
 
                 return {
-                    "age":             age,
-                    "gender":          gender,
-                    "genderConfidence": gender_conf,
-                    "selectedModel":   model_display,
-                    "modelId":         model_key,
-                    "sessionType":     "upload",
-                    "inferenceMs":     t_ms,
+                    "age":              age,
+                    "gender":           gender,
+                    "genderConfidence":  gender_conf,
+                    "genderScore":       round(raw_gender_score, 4),
+                    "occlusionWarning":  occlusion_warning,
+                    "selectedModel":    model_display,
+                    "modelId":          model_key,
+                    "sessionType":      "upload",
+                    "inferenceMs":      t_ms,
                 }
 
             # InsightFace found no face in this image
@@ -200,6 +291,166 @@ def predict_age_gender(image: np.ndarray, model_name: str = "fairface") -> dict:
     # ── Heuristic fallback (InsightFace unavailable or no face detected) ──────
     t_ms = int((time.monotonic() - t_start) * 1000)
     return _fallback_result(image, model_key, model_display, t_ms)
+
+
+def predict_all_faces(image: np.ndarray, model_name: str = "fairface") -> dict:
+    """
+    Detect and analyse ALL faces in the image.
+
+    Returns a dict that is fully backward-compatible with the single-face
+    predict_age_gender() output (same top-level age/gender/… keys for the
+    primary face) PLUS:
+      faces          – list of per-face dicts with bbox, age, gender, …
+      faceCount      – number of faces found
+      imageWidth / imageHeight  – original pixel dimensions
+      colorCastDetected / colorCastRatio  – lighting quality flag
+    """
+    model_key = (model_name or "fairface").lower().strip()
+    if model_key not in MODEL_REGISTRY:
+        model_key = "fairface"
+
+    model_display = MODEL_REGISTRY[model_key]["name"]
+    t_start       = time.monotonic()
+
+    # ── Validate input ────────────────────────────────────────────────────────
+    if image is None or (hasattr(image, "size") and image.size == 0):
+        fb = _fallback_result(image, model_key, model_display, 0)
+        fb.update({"faces": [], "faceCount": 0, "imageWidth": 0, "imageHeight": 0,
+                   "colorCastDetected": False, "colorCastRatio": 1.0})
+        return fb
+
+    if image.dtype != np.uint8:
+        image = np.clip(image, 0, 255).astype(np.uint8)
+
+    img_h, img_w = image.shape[:2]
+
+    # ── Color-cast diagnosis (image-level) ───────────────────────────────────
+    means          = [float(np.mean(image[:, :, c])) for c in range(3)]  # B G R
+    max_m, min_m   = max(means), min(means)
+    color_cast_ratio    = round(max_m / min_m, 2) if min_m > 0 else 1.0
+    color_cast_detected = color_cast_ratio > 1.25
+
+    # ── White-balance corrected copy ─────────────────────────────────────────
+    wb_image = _correct_white_balance(image)
+
+    app = _get_face_app()
+    if app is None:
+        fb = _fallback_result(image, model_key, model_display, 0)
+        fb.update({"faces": [], "faceCount": 0, "imageWidth": img_w, "imageHeight": img_h,
+                   "colorCastDetected": color_cast_detected, "colorCastRatio": color_cast_ratio})
+        return fb
+
+    try:
+        faces_orig = app.get(image)
+        faces_wb   = app.get(wb_image) if wb_image is not image else faces_orig
+        faces_all  = faces_wb if (faces_wb and len(faces_wb) > 0) else (faces_orig or [])
+
+        if not faces_all:
+            fb = _fallback_result(image, model_key, model_display, 0)
+            fb.update({"faces": [], "faceCount": 0, "imageWidth": img_w, "imageHeight": img_h,
+                       "colorCastDetected": color_cast_detected, "colorCastRatio": color_cast_ratio})
+            return fb
+
+        # ── Build per-face result list ────────────────────────────────────────
+        face_results = []
+        for face_wb in faces_all:
+            x1, y1, x2, y2 = face_wb.bbox
+            x1 = max(0, float(x1)); y1 = max(0, float(y1))
+            x2 = min(img_w, float(x2)); y2 = min(img_h, float(y2))
+
+            raw_age_wb = float(face_wb.age)
+            score_wb   = float(getattr(face_wb, "gender", 0.5))
+
+            # Match this WB face to the closest original-pass face (by IoU)
+            # so we can ensemble the two independent gender scores.
+            score_orig   = score_wb
+            raw_age_orig = raw_age_wb
+            if faces_orig:
+                best_iou = 0.0
+                for fo in faces_orig:
+                    ox1, oy1, ox2, oy2 = fo.bbox
+                    ix1, iy1 = max(x1, ox1), max(y1, oy1)
+                    ix2, iy2 = min(x2, ox2), min(y2, oy2)
+                    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+                    union = (x2-x1)*(y2-y1) + (ox2-ox1)*(oy2-oy1) - inter
+                    iou   = inter / union if union > 0 else 0.0
+                    if iou > best_iou:
+                        best_iou   = iou
+                        score_orig = float(getattr(fo, "gender", 0.5))
+                        raw_age_orig = float(fo.age)
+
+            # Ensemble: 60 % WB + 40 % original
+            raw_gender_score = 0.60 * score_wb + 0.40 * score_orig
+            raw_age          = raw_age_wb * 0.60 + raw_age_orig * 0.40
+
+            gender_code = int(round(raw_gender_score))
+            gender      = "male" if gender_code == 1 else "female"
+
+            gender_dist       = abs(raw_gender_score - 0.5)
+            gender_conf       = int(min(99, 50 + gender_dist * 98))
+            occlusion_warning = gender_conf < 72
+
+            det_score = float(getattr(face_wb, "det_score", 0.9))
+            age       = _apply_minor_calibration(raw_age, model_key)
+
+            face_results.append({
+                "age":             age,
+                "gender":          gender,
+                "genderConfidence": gender_conf,
+                "genderScore":     round(raw_gender_score, 4),
+                "occlusionWarning": occlusion_warning,
+                "detectionScore":  round(det_score, 3),
+                "bbox": [int(x1), int(y1), int(x2), int(y2)],
+                # Percentage coordinates — resolution-independent for the frontend canvas
+                "bboxPct": [
+                    round(x1 / img_w * 100, 2),
+                    round(y1 / img_h * 100, 2),
+                    round(x2 / img_w * 100, 2),
+                    round(y2 / img_h * 100, 2),
+                ],
+            })
+
+        # Sort by face area descending so index-0 is always the primary/largest face
+        face_results.sort(
+            key=lambda f: (f["bbox"][2] - f["bbox"][0]) * (f["bbox"][3] - f["bbox"][1]),
+            reverse=True,
+        )
+
+        primary = face_results[0]
+        t_ms    = int((time.monotonic() - t_start) * 1000)
+
+        print(
+            f"[InsightFace/multi] {len(face_results)} face(s) | "
+            f"primary age={primary['age']} gender={primary['gender']}({primary['genderConfidence']}%) | "
+            f"color_cast={color_cast_detected}(ratio={color_cast_ratio}) | {t_ms}ms"
+        )
+
+        return {
+            # ── Backward-compatible primary-face fields ───────────────────────
+            "age":              primary["age"],
+            "gender":           primary["gender"],
+            "genderConfidence": primary["genderConfidence"],
+            "genderScore":      primary["genderScore"],
+            "occlusionWarning": primary["occlusionWarning"],
+            "selectedModel":    model_display,
+            "modelId":          model_key,
+            "sessionType":      "upload",
+            "inferenceMs":      t_ms,
+            # ── Multi-face fields (new) ───────────────────────────────────────
+            "faces":            face_results,
+            "faceCount":        len(face_results),
+            "imageWidth":       img_w,
+            "imageHeight":      img_h,
+            "colorCastDetected":  color_cast_detected,
+            "colorCastRatio":     color_cast_ratio,
+        }
+
+    except Exception as exc:
+        print(f"[InsightFace/multi] Error: {exc}")
+        fb = _fallback_result(image, model_key, model_display, 0)
+        fb.update({"faces": [], "faceCount": 0, "imageWidth": img_w, "imageHeight": img_h,
+                   "colorCastDetected": color_cast_detected, "colorCastRatio": color_cast_ratio})
+        return fb
 
 
 def _fallback_result(image: np.ndarray, model_key: str, model_display: str, t_ms: int) -> dict:
@@ -274,6 +525,7 @@ def aggregate_session(frame_results: list[dict], model_name: str = "fairface") -
             "age":             0,
             "gender":          "unknown",
             "genderConfidence": 0,
+            "genderScore":     0.5,
             "ageTrend":        [],
             "selectedModel":   model_display,
             "modelId":         model_key,
@@ -281,14 +533,16 @@ def aggregate_session(frame_results: list[dict], model_name: str = "fairface") -
             "duration":        120,
         }
 
-    ages        = [r["age"]            for r in frame_results if r.get("age", 0) > 0]
-    genders     = [r["gender"]         for r in frame_results if r.get("gender", "unknown") != "unknown"]
-    confidences = [r["genderConfidence"] for r in frame_results if "genderConfidence" in r]
+    ages         = [r["age"]             for r in frame_results if r.get("age", 0) > 0]
+    genders      = [r["gender"]          for r in frame_results if r.get("gender", "unknown") != "unknown"]
+    confidences  = [r["genderConfidence"] for r in frame_results if "genderConfidence" in r]
+    gender_scores = [r["genderScore"]    for r in frame_results if "genderScore" in r]
 
     # Median age is robust to outlier mis-detections
     avg_age         = int(np.median(ages))       if ages        else 25
     dominant_gender = Counter(genders).most_common(1)[0][0] if genders else "male"
     avg_conf        = round(sum(confidences) / len(confidences)) if confidences else 80
+    avg_gender_score = round(sum(gender_scores) / len(gender_scores), 4) if gender_scores else 0.5
 
     # Build 7-point trend for chart
     if len(ages) >= 7:
@@ -303,6 +557,7 @@ def aggregate_session(frame_results: list[dict], model_name: str = "fairface") -
         "age":             avg_age,
         "gender":          dominant_gender,
         "genderConfidence": avg_conf,
+        "genderScore":     avg_gender_score,
         "ageTrend":        trend,
         "selectedModel":   model_display,
         "modelId":         model_key,
